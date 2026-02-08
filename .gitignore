@@ -1,0 +1,4 @@
+build/
+example/site/
+example/site-test/
+coverage.out
