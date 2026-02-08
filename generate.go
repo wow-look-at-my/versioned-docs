@@ -46,13 +46,15 @@ type VersionPageData struct {
 type IndexPageData struct {
 	Project    string
 	Versions   []VersionEntry
+	AllPages   []string                    // all unique page filenames (without .md)
+	PageMatrix map[string]map[string]bool  // page -> version -> isAuthored
 	BaseURL    string
 }
 
 type VersionEntry struct {
-	Software    string
-	Docs        string
-	IsAuthored  bool
+	Software   string
+	Docs       string
+	IsAuthored bool
 }
 
 func (g *Generator) Generate() error {
@@ -153,11 +155,48 @@ func (g *Generator) Generate() error {
 		})
 	}
 
+	// Build page matrix: collect all unique pages and track authored vs inherited
+	pageSet := make(map[string]bool)
+	for _, pages := range docContent {
+		for _, p := range pages {
+			pageName := strings.TrimSuffix(p.Filename, ".md")
+			pageSet[pageName] = true
+		}
+	}
+	var allPages []string
+	for p := range pageSet {
+		allPages = append(allPages, p)
+	}
+	sort.Strings(allPages)
+
+	// For each page, for each version: is it authored (green) or inherited (gray)?
+	pageMatrix := make(map[string]map[string]bool) // page -> version -> isAuthored
+	for _, pageName := range allPages {
+		pageMatrix[pageName] = make(map[string]bool)
+		for _, sv := range g.Config.SoftwareVersions {
+			dv := g.VersionMap[sv]
+			// Check if this page exists for this version's doc source
+			pages := docContent[dv]
+			hasPage := false
+			for _, p := range pages {
+				if strings.TrimSuffix(p.Filename, ".md") == pageName {
+					hasPage = true
+					break
+				}
+			}
+			if hasPage {
+				pageMatrix[pageName][sv] = (sv == dv) // true if authored, false if inherited
+			}
+		}
+	}
+
 	var buf bytes.Buffer
 	if err := indexTmpl.Execute(&buf, IndexPageData{
-		Project:  g.Config.Project,
-		Versions: entries,
-		BaseURL:  g.BaseURL,
+		Project:    g.Config.Project,
+		Versions:   entries,
+		AllPages:   allPages,
+		PageMatrix: pageMatrix,
+		BaseURL:    g.BaseURL,
 	}); err != nil {
 		return fmt.Errorf("rendering index: %w", err)
 	}
@@ -372,44 +411,82 @@ var defaultIndexTemplate = `<!DOCTYPE html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{.Project}} — Documentation</title>
 <style>
-  :root { --bg: #1a1a2e; --surface: #16213e; --text: #e0e0e0; --link: #53a8b6; --ok: #4caf50; }
+  :root { --bg: #1a1a2e; --surface: #16213e; --text: #e0e0e0; --link: #53a8b6; --ok: #4caf50; --inherit: #e2b93b; }
   body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); padding: 3rem; line-height: 1.6; }
-  .container { max-width: 700px; margin: 0 auto; }
+  .container { max-width: 100%; margin: 0 auto; }
   h1 { margin-bottom: 0.5rem; }
+  h2 { margin-top: 2rem; margin-bottom: 1rem; font-size: 1.2rem; color: #888; }
   .subtitle { color: #888; margin-bottom: 2rem; }
-  table { width: 100%; border-collapse: collapse; }
-  th, td { text-align: left; padding: 0.6rem 1rem; border-bottom: 1px solid rgba(255,255,255,0.05); }
-  th { color: #888; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; }
+  table { border-collapse: collapse; margin-bottom: 2rem; }
+  th, td { text-align: center; padding: 0.5rem 0.75rem; border: 1px solid rgba(255,255,255,0.1); }
+  th { background: var(--surface); color: #888; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; }
+  td.page-name { text-align: left; font-weight: 500; }
   a { color: var(--link); text-decoration: none; }
   a:hover { text-decoration: underline; }
-  .badge { display: inline-block; font-size: 0.75rem; padding: 0.15rem 0.5rem; border-radius: 3px; }
-  .badge-authored { background: rgba(76,175,80,0.2); color: var(--ok); }
-  .badge-inherited { background: rgba(255,255,255,0.05); color: #888; }
+  .cell-authored { background: rgba(76,175,80,0.2); }
+  .cell-authored a { color: var(--ok); }
+  .cell-inherited { background: rgba(226,185,59,0.1); }
+  .cell-inherited a { color: var(--inherit); }
+  .cell-empty { background: rgba(255,255,255,0.02); color: #444; }
+  .legend { display: flex; gap: 1.5rem; margin-bottom: 1rem; font-size: 0.85rem; }
+  .legend-item { display: flex; align-items: center; gap: 0.4rem; }
+  .legend-box { width: 1rem; height: 1rem; border-radius: 2px; }
+  .legend-authored { background: rgba(76,175,80,0.4); }
+  .legend-inherited { background: rgba(226,185,59,0.3); }
   .llm-section { margin-top: 2rem; padding-top: 1rem; border-top: 1px solid rgba(255,255,255,0.1); font-size: 0.9rem; color: #888; }
 </style>
 </head>
 <body>
 <div class="container">
   <h1>{{.Project}}</h1>
-  <p class="subtitle">Reverse-engineered documentation by version</p>
+  <p class="subtitle">Versioned documentation matrix</p>
+
+  <div class="legend">
+    <div class="legend-item"><div class="legend-box legend-authored"></div> Authored</div>
+    <div class="legend-item"><div class="legend-box legend-inherited"></div> Inherited</div>
+  </div>
+
   <table>
-    <thead><tr><th>Version</th><th>Docs from</th><th>Status</th></tr></thead>
-    <tbody>
-    {{range .Versions -}}
-    <tr>
-      <td><a href="{{$.BaseURL}}/{{.Software}}/index.html">{{.Software}}</a></td>
-      <td>{{.Docs}}</td>
-      <td>
-        {{if .IsAuthored -}}
-        <span class="badge badge-authored">✎ authored</span>
-        {{else -}}
-        <span class="badge badge-inherited">↳ inherited</span>
+    <thead>
+      <tr>
+        <th>Page</th>
+        {{range .Versions -}}
+        <th>{{.Software}}</th>
         {{end -}}
-      </td>
+      </tr>
+    </thead>
+    <tbody>
+    {{range $page := .AllPages -}}
+    <tr>
+      <td class="page-name">{{$page}}</td>
+      {{range $v := $.Versions -}}
+      {{$isAuthored := index (index $.PageMatrix $page) $v.Software -}}
+      {{if eq $isAuthored true -}}
+      <td class="cell-authored"><a href="{{$.BaseURL}}/{{$v.Software}}/{{$page}}.html">✓</a></td>
+      {{else if eq $isAuthored false -}}
+      <td class="cell-inherited"><a href="{{$.BaseURL}}/{{$v.Software}}/{{$page}}.html">↓</a></td>
+      {{else -}}
+      <td class="cell-empty">—</td>
+      {{end -}}
+      {{end -}}
     </tr>
     {{end -}}
     </tbody>
   </table>
+
+  <h2>Version Sources</h2>
+  <table>
+    <thead><tr><th>Version</th><th>Docs from</th></tr></thead>
+    <tbody>
+    {{range .Versions -}}
+    <tr>
+      <td><a href="{{$.BaseURL}}/{{.Software}}/index.html">{{.Software}}</a></td>
+      <td>{{if .IsAuthored}}authored{{else}}{{.Docs}}{{end}}</td>
+    </tr>
+    {{end -}}
+    </tbody>
+  </table>
+
   <div class="llm-section">
     🤖 For LLM consumption: <a href="{{.BaseURL}}/llms.txt">llms.txt</a>
   </div>
