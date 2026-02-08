@@ -1,4 +1,5 @@
 build/
+versioned-docs/
 example/site/
 example/site-test/
 coverage.out
