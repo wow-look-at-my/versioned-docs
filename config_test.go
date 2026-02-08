@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -74,9 +75,7 @@ func TestLoadConfig(t *testing.T) {
 
 	yaml := `project: testproject
 repo: https://github.com/test/test
-software_versions:
-  - "1.0"
-  - "2.0"
+version_command: "echo v1"
 `
 	if err := os.WriteFile(configPath, []byte(yaml), 0o644); err != nil {
 		t.Fatal(err)
@@ -93,18 +92,17 @@ software_versions:
 	if cfg.Repo != "https://github.com/test/test" {
 		t.Errorf("Repo = %q, want %q", cfg.Repo, "https://github.com/test/test")
 	}
-	if len(cfg.SoftwareVersions) != 2 {
-		t.Errorf("SoftwareVersions = %v, want 2 items", cfg.SoftwareVersions)
+	if cfg.VersionCommand != "echo v1" {
+		t.Errorf("VersionCommand = %q, want %q", cfg.VersionCommand, "echo v1")
 	}
 }
 
-func TestLoadConfig_EmptyVersions(t *testing.T) {
+func TestLoadConfig_MissingVersionCommand(t *testing.T) {
 	tmp := t.TempDir()
 	configPath := filepath.Join(tmp, "config.yaml")
 
 	yaml := `project: testproject
 repo: https://github.com/test/test
-software_versions: []
 `
 	if err := os.WriteFile(configPath, []byte(yaml), 0o644); err != nil {
 		t.Fatal(err)
@@ -112,7 +110,7 @@ software_versions: []
 
 	_, err := LoadConfig(configPath)
 	if err == nil {
-		t.Fatal("expected error for empty software_versions")
+		t.Fatal("expected error for missing version_command")
 	}
 }
 
@@ -137,6 +135,101 @@ func TestLoadConfig_InvalidYAML(t *testing.T) {
 	}
 }
 
+func TestLoadSoftwareVersions(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("skipping test on windows")
+	}
+
+	cfg := &Config{
+		VersionCommand: "printf 'v1\nv2\nv3'",
+	}
+	versions, err := LoadSoftwareVersions(cfg)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	want := []string{"v1", "v2", "v3"}
+	if len(versions) != len(want) {
+		t.Fatalf("got %v, want %v", versions, want)
+	}
+	for i := range want {
+		if versions[i] != want[i] {
+			t.Errorf("versions[%d] = %q, want %q", i, versions[i], want[i])
+		}
+	}
+}
+
+func TestLoadSoftwareVersions_SkipsEmptyLines(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("skipping test on windows")
+	}
+
+	cfg := &Config{
+		VersionCommand: "printf 'v1\n\nv2\n\n\nv3\n'",
+	}
+	versions, err := LoadSoftwareVersions(cfg)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	want := []string{"v1", "v2", "v3"}
+	if len(versions) != len(want) {
+		t.Fatalf("got %v, want %v", versions, want)
+	}
+}
+
+func TestLoadSoftwareVersions_PreservesOrder(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("skipping test on windows")
+	}
+
+	cfg := &Config{
+		VersionCommand: "printf 'v3\nv1\nv2'",
+	}
+	versions, err := LoadSoftwareVersions(cfg)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	want := []string{"v3", "v1", "v2"}
+	if len(versions) != len(want) {
+		t.Fatalf("got %v, want %v", versions, want)
+	}
+	for i := range want {
+		if versions[i] != want[i] {
+			t.Errorf("versions[%d] = %q, want %q", i, versions[i], want[i])
+		}
+	}
+}
+
+func TestLoadSoftwareVersions_CommandFailure(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("skipping test on windows")
+	}
+
+	cfg := &Config{
+		VersionCommand: "exit 1",
+	}
+	_, err := LoadSoftwareVersions(cfg)
+	if err == nil {
+		t.Fatal("expected error for command failure")
+	}
+}
+
+func TestLoadSoftwareVersions_NoOutput(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("skipping test on windows")
+	}
+
+	cfg := &Config{
+		VersionCommand: "echo ''",
+	}
+	_, err := LoadSoftwareVersions(cfg)
+	if err == nil {
+		t.Fatal("expected error when command produces no versions")
+	}
+}
+
 func TestDiscoverDocumentedVersions_FileNotDir(t *testing.T) {
 	tmp := t.TempDir()
 
@@ -158,5 +251,23 @@ func TestDiscoverDocumentedVersions_FileNotDir(t *testing.T) {
 	// Should only find v2 since v1 is a file not a directory
 	if len(got) != 1 || got[0] != "v2" {
 		t.Errorf("got %v, want [v2]", got)
+	}
+}
+
+func TestDiscoverDocumentedVersions_InvalidContentDir(t *testing.T) {
+	tmp := t.TempDir()
+
+	// Create directories for v1 and v2, but v3 is not in software list
+	for _, v := range []string{"v1", "v2", "v3"} {
+		if err := os.Mkdir(filepath.Join(tmp, v), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Software list only has v1 and v2, not v3
+	software := []string{"v1", "v2"}
+	_, err := DiscoverDocumentedVersions(tmp, software)
+	if err == nil {
+		t.Fatal("expected error when content dir not in software versions list")
 	}
 }

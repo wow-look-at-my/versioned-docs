@@ -28,15 +28,21 @@ func TestNoDeadLinks(t *testing.T) {
 		t.Fatalf("LoadConfig: %v", err)
 	}
 
-	documentedVersions, err := DiscoverDocumentedVersions(contentDir, cfg.SoftwareVersions)
+	softwareVersions, err := LoadSoftwareVersions(cfg)
+	if err != nil {
+		t.Fatalf("LoadSoftwareVersions: %v", err)
+	}
+
+	documentedVersions, err := DiscoverDocumentedVersions(contentDir, softwareVersions)
 	if err != nil {
 		t.Fatalf("DiscoverDocumentedVersions: %v", err)
 	}
 
-	vmap := ResolveVersionMap(cfg.SoftwareVersions, documentedVersions)
+	vmap := ResolveVersionMap(softwareVersions, documentedVersions)
 
 	gen := &Generator{
 		Config:             cfg,
+		SoftwareVersions:   softwareVersions,
 		VersionMap:         vmap,
 		DocumentedVersions: documentedVersions,
 		ContentDir:         contentDir,

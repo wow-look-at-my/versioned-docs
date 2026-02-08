@@ -16,6 +16,7 @@ import (
 
 type Generator struct {
 	Config             *Config
+	SoftwareVersions   []string
 	VersionMap         map[string]string // software version -> default docs version (legacy, kept for display)
 	DocumentedVersions []string
 	ContentDir         string
@@ -133,11 +134,11 @@ func (g *Generator) Generate() error {
 	}
 
 	// Generate per-version output with page-level inheritance
-	for _, sv := range g.Config.SoftwareVersions {
+	for _, sv := range g.SoftwareVersions {
 		// Resolve each page independently
 		var pages []DocPage
 		for _, pageName := range allPageNames {
-			sourceVersion := ResolvePageVersion(sv, pageName, g.Config.SoftwareVersions, pageVersions[pageName])
+			sourceVersion := ResolvePageVersion(sv, pageName, g.SoftwareVersions, pageVersions[pageName])
 			if sourceVersion == "" {
 				continue // no version has this page (shouldn't happen)
 			}
@@ -165,7 +166,7 @@ func (g *Generator) Generate() error {
 				IsInherited:     isInherited,
 				Pages:           pages,
 				CurrentPage:     page,
-				AllVersions:     g.Config.SoftwareVersions,
+				AllVersions:     g.SoftwareVersions,
 				BaseURL:         g.BaseURL,
 				VersionMap:      g.VersionMap,
 			}
@@ -187,7 +188,7 @@ func (g *Generator) Generate() error {
 
 	// Generate root index
 	var entries []VersionEntry
-	for _, sv := range g.Config.SoftwareVersions {
+	for _, sv := range g.SoftwareVersions {
 		dv := g.VersionMap[sv]
 		entries = append(entries, VersionEntry{
 			Software:   sv,
@@ -206,8 +207,8 @@ func (g *Generator) Generate() error {
 	pageMatrix := make(map[string]map[string]bool)
 	for _, pageName := range allPagesForIndex {
 		pageMatrix[pageName] = make(map[string]bool)
-		for _, sv := range g.Config.SoftwareVersions {
-			sourceVersion := ResolvePageVersion(sv, pageName+".md", g.Config.SoftwareVersions, pageVersions[pageName+".md"])
+		for _, sv := range g.SoftwareVersions {
+			sourceVersion := ResolvePageVersion(sv, pageName+".md", g.SoftwareVersions, pageVersions[pageName+".md"])
 			if sourceVersion != "" {
 				pageMatrix[pageName][sv] = (sourceVersion == sv) // true if authored
 			}
@@ -325,7 +326,7 @@ func (g *Generator) generateLLMSIndex() error {
 	b.WriteString("Reverse-engineered documentation.\n\n")
 	b.WriteString("## Versions\n\n")
 
-	for _, sv := range g.Config.SoftwareVersions {
+	for _, sv := range g.SoftwareVersions {
 		dv := g.VersionMap[sv]
 		marker := ""
 		if sv != dv {

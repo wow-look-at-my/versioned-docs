@@ -157,10 +157,10 @@ func TestGenerator_Generate_PageLevelInheritance(t *testing.T) {
 
 	g := &Generator{
 		Config: &Config{
-			Project:          "testproj",
-			Repo:             "https://github.com/test/test",
-			SoftwareVersions: []string{"v1", "v2", "v3"},
+			Project: "testproj",
+			Repo:    "https://github.com/test/test",
 		},
+		SoftwareVersions: []string{"v1", "v2", "v3"},
 		VersionMap: map[string]string{
 			"v1": "v2",
 			"v2": "v2",
@@ -216,10 +216,10 @@ func TestGenerator_Generate_BasicOutput(t *testing.T) {
 
 	g := &Generator{
 		Config: &Config{
-			Project:          "testproj",
-			Repo:             "https://github.com/test/test",
-			SoftwareVersions: []string{"v1"},
+			Project: "testproj",
+			Repo:    "https://github.com/test/test",
 		},
+		SoftwareVersions: []string{"v1"},
 		VersionMap:         map[string]string{"v1": "v1"},
 		DocumentedVersions: []string{"v1"},
 		ContentDir:         contentDir,
@@ -259,10 +259,10 @@ func TestGenerator_Generate_ContentLoadError(t *testing.T) {
 
 	g := &Generator{
 		Config: &Config{
-			Project:          "testproj",
-			Repo:             "https://github.com/test/test",
-			SoftwareVersions: []string{"v1"},
+			Project: "testproj",
+			Repo:    "https://github.com/test/test",
 		},
+		SoftwareVersions: []string{"v1"},
 		VersionMap:         map[string]string{"v1": "v1"},
 		DocumentedVersions: []string{"v1"},
 		ContentDir:         "/nonexistent/path",
@@ -340,10 +340,10 @@ func TestGenerator_generateLLMSIndex(t *testing.T) {
 
 	g := &Generator{
 		Config: &Config{
-			Project:          "testproj",
-			Repo:             "https://github.com/test/test",
-			SoftwareVersions: []string{"v1", "v2"},
+			Project: "testproj",
+			Repo:    "https://github.com/test/test",
 		},
+		SoftwareVersions: []string{"v1", "v2"},
 		VersionMap: map[string]string{
 			"v1": "v2",
 			"v2": "v2",
@@ -427,10 +427,10 @@ func TestGenerator_Generate_EmptyDocVersion(t *testing.T) {
 
 	g := &Generator{
 		Config: &Config{
-			Project:          "testproj",
-			Repo:             "https://github.com/test/test",
-			SoftwareVersions: []string{"v1"},
+			Project: "testproj",
+			Repo:    "https://github.com/test/test",
 		},
+		SoftwareVersions: []string{"v1"},
 		VersionMap:         map[string]string{"v1": "v1"},
 		DocumentedVersions: []string{"v1"},
 		ContentDir:         contentDir,
@@ -487,10 +487,10 @@ func TestGenerator_Generate_MultipleVersionsMultiplePages(t *testing.T) {
 
 	g := &Generator{
 		Config: &Config{
-			Project:          "testproj",
-			Repo:             "https://github.com/test/test",
-			SoftwareVersions: []string{"v1", "v2", "v3"},
+			Project: "testproj",
+			Repo:    "https://github.com/test/test",
 		},
+		SoftwareVersions: []string{"v1", "v2", "v3"},
 		VersionMap: map[string]string{
 			"v1": "v1",
 			"v2": "v1",
