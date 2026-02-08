@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{.Project}} {{.SoftwareVersion}} — {{.CurrentPage.Title}}</title>
+<link rel="stylesheet" href="{{.BaseURL}}/static/style.css">
+</head>
+<body class="page-view">
+<div class="layout">
+  <nav>
+    <div class="version-select">
+      <h2>Version</h2>
+      <select onchange="if(this.value)window.location.href=this.value">
+        {{range .AllVersions -}}
+        <option value="{{$.BaseURL}}/{{.}}/index.html" {{if eq . $.SoftwareVersion}}selected{{end}}>
+          {{.}}{{if ne . (index $.VersionMap .)}} (docs: {{index $.VersionMap .}}){{end}}
+        </option>
+        {{end -}}
+      </select>
+    </div>
+    <h2>Pages</h2>
+    {{range .Pages -}}
+    <a href="{{$.BaseURL}}/{{$.SoftwareVersion}}/{{.Filename | trimmd}}.html"
+       {{if eq .Filename $.CurrentPage.Filename}}class="active"{{end}}>
+      {{.Title}}
+    </a>
+    {{end -}}
+  </nav>
+  <main>
+    {{if .IsInherited -}}
+    <div class="inherited-banner">
+      📋 These docs were written for version <strong>{{.DocsVersion}}</strong>.
+      No specific documentation exists for {{.SoftwareVersion}} yet.
+    </div>
+    {{end -}}
+    {{.CurrentPage.HTML}}
+    <div class="llm-link">
+      🤖 <a href="{{.BaseURL}}/{{.SoftwareVersion}}/llms-full.md">LLM-friendly version</a>
+      · <a href="{{.BaseURL}}/llms.txt">llms.txt</a>
+    </div>
+  </main>
+</div>
+<script src="{{.BaseURL}}/static/script.js"></script>
+</body>
+</html>

@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{.Project}} — Documentation</title>
+<link rel="stylesheet" href="{{.BaseURL}}/static/style.css">
+</head>
+<body class="index-view">
+<div class="container">
+  <h1>{{.Project}}</h1>
+  <p class="subtitle">Versioned documentation matrix</p>
+
+  <div class="legend">
+    <div class="legend-item"><div class="legend-box legend-authored"></div> Authored</div>
+    <div class="legend-item"><div class="legend-box legend-inherited"></div> Inherited</div>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Page</th>
+        {{range .Versions -}}
+        <th>{{.Software}}</th>
+        {{end -}}
+      </tr>
+    </thead>
+    <tbody>
+    {{range $page := .AllPages -}}
+    <tr>
+      <td class="page-name">{{$page}}</td>
+      {{range $v := $.Versions -}}
+      {{$isAuthored := index (index $.PageMatrix $page) $v.Software -}}
+      {{if eq $isAuthored true -}}
+      <td class="cell-authored"><a href="{{$.BaseURL}}/{{$v.Software}}/{{$page}}.html">✓</a></td>
+      {{else if eq $isAuthored false -}}
+      <td class="cell-inherited"><a href="{{$.BaseURL}}/{{$v.Software}}/{{$page}}.html">↓</a></td>
+      {{else -}}
+      <td class="cell-empty">—</td>
+      {{end -}}
+      {{end -}}
+    </tr>
+    {{end -}}
+    </tbody>
+  </table>
+
+  <h2>Version Sources</h2>
+  <table>
+    <thead><tr><th>Version</th><th>Docs from</th></tr></thead>
+    <tbody>
+    {{range .Versions -}}
+    <tr>
+      <td><a href="{{$.BaseURL}}/{{.Software}}/index.html">{{.Software}}</a></td>
+      <td>{{if .IsAuthored}}authored{{else}}{{.Docs}}{{end}}</td>
+    </tr>
+    {{end -}}
+    </tbody>
+  </table>
+
+  <div class="llm-section">
+    🤖 For LLM consumption: <a href="{{.BaseURL}}/llms.txt">llms.txt</a>
+  </div>
+</div>
+</body>
+</html>
