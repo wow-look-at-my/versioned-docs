@@ -69,3 +69,60 @@ func ResolveVersionMap(softwareVersions, documentedVersions []string) map[string
 
 	return result
 }
+
+// ResolvePageVersion finds which documented version to use for a specific page
+// for a given software version. Uses the same inheritance rules as ResolveVersionMap
+// but applied per-page:
+//
+//  1. Use the nearest documented version <= this software version that has the page.
+//  2. If none exists, use the nearest documented version > this software version that has the page.
+//
+// Returns the doc version to use, or empty string if no version has this page.
+func ResolvePageVersion(softwareVersion string, pageName string, softwareVersions []string, pageVersions map[string]bool) string {
+	// pageVersions is a set of doc versions that have this page
+
+	// Index each software version by position
+	svIndex := make(map[string]int, len(softwareVersions))
+	for i, sv := range softwareVersions {
+		svIndex[sv] = i
+	}
+
+	// Build ordered list of doc versions that have this page
+	type docPos struct {
+		version string
+		index   int
+	}
+	var docPositions []docPos
+	for _, sv := range softwareVersions {
+		if pageVersions[sv] {
+			docPositions = append(docPositions, docPos{sv, svIndex[sv]})
+		}
+	}
+
+	if len(docPositions) == 0 {
+		return ""
+	}
+
+	idx := svIndex[softwareVersion]
+
+	// Find nearest documented version <= this one that has the page
+	bestBefore := ""
+	for _, dp := range docPositions {
+		if dp.index <= idx {
+			bestBefore = dp.version // last one <= idx wins (they're in order)
+		}
+	}
+
+	if bestBefore != "" {
+		return bestBefore
+	}
+
+	// Fallback: nearest documented version > this one that has the page
+	for _, dp := range docPositions {
+		if dp.index > idx {
+			return dp.version
+		}
+	}
+
+	return ""
+}

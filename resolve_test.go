@@ -65,3 +65,87 @@ func TestResolveVersionMap_OnlyLastDocumented(t *testing.T) {
 		}
 	}
 }
+
+func TestResolvePageVersion(t *testing.T) {
+	software := []string{"v1", "v2", "v3", "v4"}
+
+	tests := []struct {
+		name            string
+		softwareVersion string
+		pageVersions    map[string]bool // versions that have this page
+		want            string
+	}{
+		{
+			name:            "page exists in same version",
+			softwareVersion: "v2",
+			pageVersions:    map[string]bool{"v2": true},
+			want:            "v2",
+		},
+		{
+			name:            "page inherited from older version",
+			softwareVersion: "v3",
+			pageVersions:    map[string]bool{"v2": true},
+			want:            "v2",
+		},
+		{
+			name:            "page inherited from newer version (no older exists)",
+			softwareVersion: "v1",
+			pageVersions:    map[string]bool{"v2": true},
+			want:            "v2",
+		},
+		{
+			name:            "page exists in multiple versions, picks nearest older",
+			softwareVersion: "v3",
+			pageVersions:    map[string]bool{"v1": true, "v2": true, "v4": true},
+			want:            "v2",
+		},
+		{
+			name:            "page only in newest version",
+			softwareVersion: "v2",
+			pageVersions:    map[string]bool{"v4": true},
+			want:            "v4",
+		},
+		{
+			name:            "no version has page",
+			softwareVersion: "v2",
+			pageVersions:    map[string]bool{},
+			want:            "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := ResolvePageVersion(tt.softwareVersion, "test.md", software, tt.pageVersions)
+			if got != tt.want {
+				t.Errorf("ResolvePageVersion() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestResolvePageVersion_PageLevelInheritance(t *testing.T) {
+	// Test the scenario from the handoff notes:
+	// v2 has: index.md, api.md
+	// v3 has: index.md only
+	// v3 should get api.md from v2
+
+	software := []string{"v1", "v2", "v3"}
+
+	indexVersions := map[string]bool{"v2": true, "v3": true}
+	apiVersions := map[string]bool{"v2": true}
+
+	// v3's index should come from v3 (authored)
+	if got := ResolvePageVersion("v3", "index.md", software, indexVersions); got != "v3" {
+		t.Errorf("v3 index: got %q, want v3", got)
+	}
+
+	// v3's api should come from v2 (inherited)
+	if got := ResolvePageVersion("v3", "api.md", software, apiVersions); got != "v2" {
+		t.Errorf("v3 api: got %q, want v2", got)
+	}
+
+	// v1's index should come from v2 (falls forward)
+	if got := ResolvePageVersion("v1", "index.md", software, indexVersions); got != "v2" {
+		t.Errorf("v1 index: got %q, want v2", got)
+	}
+}

@@ -16,8 +16,8 @@ import (
 
 type Generator struct {
 	Config             *Config
-	VersionMap         map[string]string // software version -> docs version
-	DocumentedVersions []string          // versions that have authored docs
+	VersionMap         map[string]string // software version -> default docs version (legacy, kept for display)
+	DocumentedVersions []string
 	ContentDir         string
 	TemplateDir        string
 	OutputDir          string
@@ -25,29 +25,30 @@ type Generator struct {
 }
 
 type DocPage struct {
-	Filename string // e.g. "api.md"
-	Title    string // derived from first H1 or filename
-	Markdown string // raw markdown
-	HTML     template.HTML
+	Filename      string
+	Title         string
+	Markdown      string
+	HTML          template.HTML
+	SourceVersion string // which doc version this page came from
 }
 
 type VersionPageData struct {
-	Project          string
-	SoftwareVersion  string
-	DocsVersion      string
-	IsInherited      bool // true if docs come from a different version
-	Pages            []DocPage
-	CurrentPage      DocPage
-	AllVersions      []string
-	BaseURL          string
-	VersionMap       map[string]string
+	Project         string
+	SoftwareVersion string
+	DocsVersion     string // source version for CurrentPage
+	IsInherited     bool   // true if CurrentPage.SourceVersion != SoftwareVersion
+	Pages           []DocPage
+	CurrentPage     DocPage
+	AllVersions     []string
+	BaseURL         string
+	VersionMap      map[string]string
 }
 
 type IndexPageData struct {
 	Project    string
 	Versions   []VersionEntry
-	AllPages   []string                    // all unique page filenames (without .md)
-	PageMatrix map[string]map[string]bool  // page -> version -> isAuthored
+	AllPages   []string
+	PageMatrix map[string]map[string]bool // page -> version -> isAuthored
 	BaseURL    string
 }
 
@@ -69,7 +70,6 @@ func (g *Generator) Generate() error {
 		),
 	)
 
-	// Clean output directory before generating
 	if err := os.RemoveAll(g.OutputDir); err != nil {
 		return err
 	}
@@ -77,23 +77,51 @@ func (g *Generator) Generate() error {
 		return err
 	}
 
-	// Write static assets (CSS, JS)
 	if err := g.writeStaticAssets(); err != nil {
 		return fmt.Errorf("writing static assets: %w", err)
 	}
 
-	// Load all documented version content
-	docContent := make(map[string][]DocPage) // docs version -> pages
+	// Load all pages from all documented versions
+	// docContent[docVersion][pageName] = DocPage
+	docContent := make(map[string]map[string]DocPage)
 	for _, dv := range g.DocumentedVersions {
 		pages, err := g.loadVersionContent(dv, md)
 		if err != nil {
 			return fmt.Errorf("loading content for %s: %w", dv, err)
 		}
-		docContent[dv] = pages
+		docContent[dv] = make(map[string]DocPage)
+		for _, p := range pages {
+			docContent[dv][p.Filename] = p
+		}
 		fmt.Printf("  Loaded %d pages for %s\n", len(pages), dv)
 	}
 
-	// Load templates (use defaults if not present)
+	// Build pageVersions: pageName -> set of doc versions that have it
+	pageVersions := make(map[string]map[string]bool)
+	for dv, pages := range docContent {
+		for pageName := range pages {
+			if pageVersions[pageName] == nil {
+				pageVersions[pageName] = make(map[string]bool)
+			}
+			pageVersions[pageName][dv] = true
+		}
+	}
+
+	// Collect all unique page names
+	var allPageNames []string
+	for pageName := range pageVersions {
+		allPageNames = append(allPageNames, pageName)
+	}
+	sort.Slice(allPageNames, func(i, j int) bool {
+		if allPageNames[i] == "index.md" {
+			return true
+		}
+		if allPageNames[j] == "index.md" {
+			return false
+		}
+		return allPageNames[i] < allPageNames[j]
+	})
+
 	pageTmpl, err := g.loadPageTemplate()
 	if err != nil {
 		return fmt.Errorf("loading page template: %w", err)
@@ -104,10 +132,20 @@ func (g *Generator) Generate() error {
 		return fmt.Errorf("loading index template: %w", err)
 	}
 
-	// Generate per-version output
+	// Generate per-version output with page-level inheritance
 	for _, sv := range g.Config.SoftwareVersions {
-		dv := g.VersionMap[sv]
-		pages := docContent[dv]
+		// Resolve each page independently
+		var pages []DocPage
+		for _, pageName := range allPageNames {
+			sourceVersion := ResolvePageVersion(sv, pageName, g.Config.SoftwareVersions, pageVersions[pageName])
+			if sourceVersion == "" {
+				continue // no version has this page (shouldn't happen)
+			}
+			page := docContent[sourceVersion][pageName]
+			page.SourceVersion = sourceVersion
+			pages = append(pages, page)
+		}
+
 		if len(pages) == 0 {
 			continue
 		}
@@ -117,14 +155,13 @@ func (g *Generator) Generate() error {
 			return err
 		}
 
-		isInherited := sv != dv
-
-		// Generate HTML for each page
 		for _, page := range pages {
+			isInherited := page.SourceVersion != sv
+
 			data := VersionPageData{
 				Project:         g.Config.Project,
 				SoftwareVersion: sv,
-				DocsVersion:     dv,
+				DocsVersion:     page.SourceVersion,
 				IsInherited:     isInherited,
 				Pages:           pages,
 				CurrentPage:     page,
@@ -145,8 +182,7 @@ func (g *Generator) Generate() error {
 			}
 		}
 
-		// Generate per-version LLM-friendly concatenated markdown
-		g.generateVersionLLMDoc(versionDir, sv, dv, isInherited, pages)
+		g.generateVersionLLMDoc(versionDir, sv, pages)
 	}
 
 	// Generate root index
@@ -160,37 +196,20 @@ func (g *Generator) Generate() error {
 		})
 	}
 
-	// Build page matrix: collect all unique pages and track authored vs inherited
-	pageSet := make(map[string]bool)
-	for _, pages := range docContent {
-		for _, p := range pages {
-			pageName := strings.TrimSuffix(p.Filename, ".md")
-			pageSet[pageName] = true
-		}
+	// Build page matrix for index
+	var allPagesForIndex []string
+	for p := range pageVersions {
+		allPagesForIndex = append(allPagesForIndex, strings.TrimSuffix(p, ".md"))
 	}
-	var allPages []string
-	for p := range pageSet {
-		allPages = append(allPages, p)
-	}
-	sort.Strings(allPages)
+	sort.Strings(allPagesForIndex)
 
-	// For each page, for each version: is it authored (green) or inherited (gray)?
-	pageMatrix := make(map[string]map[string]bool) // page -> version -> isAuthored
-	for _, pageName := range allPages {
+	pageMatrix := make(map[string]map[string]bool)
+	for _, pageName := range allPagesForIndex {
 		pageMatrix[pageName] = make(map[string]bool)
 		for _, sv := range g.Config.SoftwareVersions {
-			dv := g.VersionMap[sv]
-			// Check if this page exists for this version's doc source
-			pages := docContent[dv]
-			hasPage := false
-			for _, p := range pages {
-				if strings.TrimSuffix(p.Filename, ".md") == pageName {
-					hasPage = true
-					break
-				}
-			}
-			if hasPage {
-				pageMatrix[pageName][sv] = (sv == dv) // true if authored, false if inherited
+			sourceVersion := ResolvePageVersion(sv, pageName+".md", g.Config.SoftwareVersions, pageVersions[pageName+".md"])
+			if sourceVersion != "" {
+				pageMatrix[pageName][sv] = (sourceVersion == sv) // true if authored
 			}
 		}
 	}
@@ -199,7 +218,7 @@ func (g *Generator) Generate() error {
 	if err := indexTmpl.Execute(&buf, IndexPageData{
 		Project:    g.Config.Project,
 		Versions:   entries,
-		AllPages:   allPages,
+		AllPages:   allPagesForIndex,
 		PageMatrix: pageMatrix,
 		BaseURL:    g.BaseURL,
 	}); err != nil {
@@ -209,7 +228,6 @@ func (g *Generator) Generate() error {
 		return err
 	}
 
-	// Generate root llms.txt
 	return g.generateLLMSIndex()
 }
 
@@ -246,7 +264,6 @@ func (g *Generator) loadVersionContent(version string, md goldmark.Markdown) ([]
 		})
 	}
 
-	// Sort: index.md first, then alphabetical
 	sort.Slice(pages, func(i, j int) bool {
 		if pages[i].Filename == "index.md" {
 			return true
@@ -270,16 +287,16 @@ func extractTitle(markdown, filename string) string {
 	return strings.TrimSuffix(filename, ".md")
 }
 
-func (g *Generator) generateVersionLLMDoc(dir, sv, dv string, inherited bool, pages []DocPage) {
+func (g *Generator) generateVersionLLMDoc(dir, sv string, pages []DocPage) {
 	var b strings.Builder
 	b.WriteString(fmt.Sprintf("# %s — Documentation for version %s\n\n", g.Config.Project, sv))
-	if inherited {
-		b.WriteString(fmt.Sprintf("> Note: These docs were authored for version %s and may not reflect changes in %s.\n\n", dv, sv))
-	}
 	b.WriteString(fmt.Sprintf("Source: %s\n\n", g.Config.Repo))
 	b.WriteString("---\n\n")
 
 	for _, page := range pages {
+		if page.SourceVersion != sv {
+			b.WriteString(fmt.Sprintf("> Note: This page was authored for version %s.\n\n", page.SourceVersion))
+		}
 		b.WriteString(page.Markdown)
 		b.WriteString("\n\n---\n\n")
 	}
