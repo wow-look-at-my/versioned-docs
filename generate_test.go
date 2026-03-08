@@ -102,7 +102,79 @@ func TestGenerator_loadVersionContent_SkipsNonMD(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(versionDir, "image.png"), []byte("fake image"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Mkdir(filepath.Join(versionDir, "subdir"), 0o755); err != nil {
+
+	g := &Generator{ContentDir: tmp}
+	md := goldmark.New()
+	pages, err := g.loadVersionContent("v1", md)
+	if err != nil {
+		t.Fatalf("loadVersionContent: %v", err)
+	}
+
+	if len(pages) != 1 {
+		t.Errorf("got %d pages, want 1 (only .md files)", len(pages))
+	}
+}
+
+func TestGenerator_loadVersionContent_Subdirectories(t *testing.T) {
+	tmp := t.TempDir()
+	versionDir := filepath.Join(tmp, "v1")
+	subDir := filepath.Join(versionDir, "rendering")
+	if err := os.MkdirAll(subDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.WriteFile(filepath.Join(versionDir, "index.md"), []byte("# Index"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(subDir, "shaders.md"), []byte("# Shaders"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(subDir, "lighting.md"), []byte("# Lighting"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// Non-md file in subdir should be skipped
+	if err := os.WriteFile(filepath.Join(subDir, "diagram.svg"), []byte("<svg/>"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	g := &Generator{ContentDir: tmp}
+	md := goldmark.New()
+	pages, err := g.loadVersionContent("v1", md)
+	if err != nil {
+		t.Fatalf("loadVersionContent: %v", err)
+	}
+
+	if len(pages) != 3 {
+		t.Fatalf("got %d pages, want 3", len(pages))
+	}
+
+	// index.md should be first
+	if pages[0].Filename != "index.md" {
+		t.Errorf("first page = %q, want index.md", pages[0].Filename)
+	}
+
+	// Check subdirectory pages use forward-slash relative paths
+	names := make(map[string]bool)
+	for _, p := range pages {
+		names[p.Filename] = true
+	}
+	if !names["rendering/lighting.md"] {
+		t.Error("missing rendering/lighting.md")
+	}
+	if !names["rendering/shaders.md"] {
+		t.Error("missing rendering/shaders.md")
+	}
+}
+
+func TestGenerator_loadVersionContent_DeepNesting(t *testing.T) {
+	tmp := t.TempDir()
+	versionDir := filepath.Join(tmp, "v1")
+	deepDir := filepath.Join(versionDir, "a", "b", "c")
+	if err := os.MkdirAll(deepDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.WriteFile(filepath.Join(deepDir, "deep.md"), []byte("# Deep"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -114,7 +186,10 @@ func TestGenerator_loadVersionContent_SkipsNonMD(t *testing.T) {
 	}
 
 	if len(pages) != 1 {
-		t.Errorf("got %d pages, want 1 (only .md files)", len(pages))
+		t.Fatalf("got %d pages, want 1", len(pages))
+	}
+	if pages[0].Filename != "a/b/c/deep.md" {
+		t.Errorf("filename = %q, want a/b/c/deep.md", pages[0].Filename)
 	}
 }
 
@@ -459,6 +534,59 @@ func TestGenerator_writeStaticAssets(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(tmp, "static", "script.js")); err != nil {
 		t.Error("missing script.js")
+	}
+}
+
+func TestGenerator_Generate_SubdirectoryOutput(t *testing.T) {
+	tmp := t.TempDir()
+	contentDir := filepath.Join(tmp, "content")
+	outputDir := filepath.Join(tmp, "site")
+
+	// v1 has root index.md and rendering/shaders.md
+	v1Dir := filepath.Join(contentDir, "v1")
+	v1Sub := filepath.Join(v1Dir, "rendering")
+	if err := os.MkdirAll(v1Sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(v1Dir, "index.md"), []byte("# v1 Index"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(v1Sub, "shaders.md"), []byte("# Shaders Guide"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	g := &Generator{
+		Config: &Config{
+			Project: "testproj",
+			Repo:    "https://github.com/test/test",
+		},
+		SoftwareVersions:   []string{"v1", "v2"},
+		VersionMap:         map[string]string{"v1": "v1", "v2": "v1"},
+		DocumentedVersions: []string{"v1"},
+		ContentDir:         contentDir,
+		TemplateDir:        filepath.Join(tmp, "templates"),
+		OutputDir:          outputDir,
+		BaseURL:            "",
+	}
+
+	if err := g.Generate(); err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+
+	// v1 should have rendering/shaders.html in a subdirectory
+	if _, err := os.Stat(filepath.Join(outputDir, "v1", "rendering", "shaders.html")); err != nil {
+		t.Error("missing v1/rendering/shaders.html")
+	}
+	if _, err := os.Stat(filepath.Join(outputDir, "v1", "index.html")); err != nil {
+		t.Error("missing v1/index.html")
+	}
+
+	// v2 should inherit subdirectory pages from v1
+	if _, err := os.Stat(filepath.Join(outputDir, "v2", "rendering", "shaders.html")); err != nil {
+		t.Error("missing v2/rendering/shaders.html - subdirectory inheritance failed")
+	}
+	if _, err := os.Stat(filepath.Join(outputDir, "v2", "index.html")); err != nil {
+		t.Error("missing v2/index.html")
 	}
 }
 

@@ -15,9 +15,10 @@ type Config struct {
 	Project        string `yaml:"project"`
 	Repo           string `yaml:"repo"`
 	VersionCommand string `yaml:"version_command"`
+	ContentCommand string `yaml:"content_command"`
 
 	// ConfigDir is the directory containing the config file.
-	// Used as working directory for version_command.
+	// Used as working directory for version_command and content_command.
 	ConfigDir string `yaml:"-"`
 }
 
@@ -69,6 +70,23 @@ func LoadSoftwareVersions(cfg *Config) ([]string, error) {
 	}
 
 	return versions, nil
+}
+
+// RunContentCommand runs the content_command if configured.
+// This allows preparing content (e.g., extracting docs from git branches)
+// before the tool scans the content directory.
+func RunContentCommand(cfg *Config) error {
+	if cfg.ContentCommand == "" {
+		return nil
+	}
+	cmd := exec.Command("sh", "-c", cfg.ContentCommand)
+	cmd.Dir = cfg.ConfigDir
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("running content_command: %w", err)
+	}
+	return nil
 }
 
 // DiscoverDocumentedVersions scans the content directory to find which

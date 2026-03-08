@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"html/template"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -174,6 +175,10 @@ func (g *Generator) Generate() error {
 			outName := strings.TrimSuffix(page.Filename, ".md") + ".html"
 			outPath := filepath.Join(versionDir, outName)
 
+			if err := os.MkdirAll(filepath.Dir(outPath), 0o755); err != nil {
+				return err
+			}
+
 			var buf bytes.Buffer
 			if err := pageTmpl.Execute(&buf, data); err != nil {
 				return fmt.Errorf("rendering %s/%s: %w", sv, outName, err)
@@ -234,35 +239,49 @@ func (g *Generator) Generate() error {
 
 func (g *Generator) loadVersionContent(version string, md goldmark.Markdown) ([]DocPage, error) {
 	dir := filepath.Join(g.ContentDir, version)
-	entries, err := os.ReadDir(dir)
-	if err != nil {
+
+	// Check directory exists before walking
+	if _, err := os.Stat(dir); err != nil {
 		return nil, err
 	}
 
 	var pages []DocPage
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
-			continue
+	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() || !strings.HasSuffix(d.Name(), ".md") {
+			return nil
 		}
 
-		data, err := os.ReadFile(filepath.Join(dir, e.Name()))
+		relPath, err := filepath.Rel(dir, path)
 		if err != nil {
-			return nil, err
+			return err
+		}
+		relPath = filepath.ToSlash(relPath)
+
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
 		}
 
 		var htmlBuf bytes.Buffer
 		if err := md.Convert(data, &htmlBuf); err != nil {
-			return nil, fmt.Errorf("converting %s: %w", e.Name(), err)
+			return fmt.Errorf("converting %s: %w", relPath, err)
 		}
 
-		title := extractTitle(string(data), e.Name())
+		title := extractTitle(string(data), filepath.Base(relPath))
 
 		pages = append(pages, DocPage{
-			Filename: e.Name(),
+			Filename: relPath,
 			Title:    title,
 			Markdown: string(data),
 			HTML:     template.HTML(htmlBuf.String()),
 		})
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	sort.Slice(pages, func(i, j int) bool {
@@ -340,7 +359,15 @@ func (g *Generator) generateLLMSIndex() error {
 }
 
 var funcMap = template.FuncMap{
-	"trimmd": func(s string) string { return strings.TrimSuffix(s, ".md") },
+	"trimmd":   func(s string) string { return strings.TrimSuffix(s, ".md") },
+	"basename": func(s string) string { return filepath.Base(s) },
+	"dirname": func(s string) string {
+		d := filepath.Dir(s)
+		if d == "." {
+			return ""
+		}
+		return d
+	},
 }
 
 func (g *Generator) loadPageTemplate() (*template.Template, error) {

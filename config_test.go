@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -251,6 +252,77 @@ func TestDiscoverDocumentedVersions_FileNotDir(t *testing.T) {
 	// Should only find v2 since v1 is a file not a directory
 	if len(got) != 1 || got[0] != "v2" {
 		t.Errorf("got %v, want [v2]", got)
+	}
+}
+
+func TestLoadConfig_WithContentCommand(t *testing.T) {
+	tmp := t.TempDir()
+	configPath := filepath.Join(tmp, "config.yaml")
+
+	yaml := `project: testproject
+repo: https://github.com/test/test
+version_command: "echo v1"
+content_command: "mkdir -p content/v1"
+`
+	if err := os.WriteFile(configPath, []byte(yaml), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := LoadConfig(configPath)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if cfg.ContentCommand != "mkdir -p content/v1" {
+		t.Errorf("ContentCommand = %q, want %q", cfg.ContentCommand, "mkdir -p content/v1")
+	}
+}
+
+func TestRunContentCommand(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("skipping test on windows")
+	}
+
+	tmp := t.TempDir()
+	cfg := &Config{
+		ContentCommand: "mkdir -p content/v1 && echo hello > content/v1/index.md",
+		ConfigDir:      tmp,
+	}
+
+	if err := RunContentCommand(cfg); err != nil {
+		t.Fatalf("RunContentCommand: %v", err)
+	}
+
+	// Verify the command created the expected files
+	data, err := os.ReadFile(filepath.Join(tmp, "content", "v1", "index.md"))
+	if err != nil {
+		t.Fatalf("expected file not created: %v", err)
+	}
+	if !strings.Contains(string(data), "hello") {
+		t.Errorf("unexpected file content: %q", string(data))
+	}
+}
+
+func TestRunContentCommand_Empty(t *testing.T) {
+	cfg := &Config{ContentCommand: ""}
+	if err := RunContentCommand(cfg); err != nil {
+		t.Fatalf("RunContentCommand with empty command should be no-op: %v", err)
+	}
+}
+
+func TestRunContentCommand_Failure(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("skipping test on windows")
+	}
+
+	cfg := &Config{
+		ContentCommand: "exit 1",
+		ConfigDir:      t.TempDir(),
+	}
+
+	err := RunContentCommand(cfg)
+	if err == nil {
+		t.Fatal("expected error for command failure")
 	}
 }
 

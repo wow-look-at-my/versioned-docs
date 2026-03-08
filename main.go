@@ -20,6 +20,11 @@ func main() {
 		os.Exit(1)
 	}
 
+	if err := RunContentCommand(cfg); err != nil {
+		fmt.Fprintf(os.Stderr, "error running content command: %v\n", err)
+		os.Exit(1)
+	}
+
 	softwareVersions, err := LoadSoftwareVersions(cfg)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error loading software versions: %v\n", err)
