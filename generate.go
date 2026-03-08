@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"html/template"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -16,6 +17,7 @@ import (
 
 type Generator struct {
 	Config             *Config
+	SoftwareVersions   []string
 	VersionMap         map[string]string // software version -> default docs version (legacy, kept for display)
 	DocumentedVersions []string
 	ContentDir         string
@@ -133,11 +135,11 @@ func (g *Generator) Generate() error {
 	}
 
 	// Generate per-version output with page-level inheritance
-	for _, sv := range g.Config.SoftwareVersions {
+	for _, sv := range g.SoftwareVersions {
 		// Resolve each page independently
 		var pages []DocPage
 		for _, pageName := range allPageNames {
-			sourceVersion := ResolvePageVersion(sv, pageName, g.Config.SoftwareVersions, pageVersions[pageName])
+			sourceVersion := ResolvePageVersion(sv, pageName, g.SoftwareVersions, pageVersions[pageName])
 			if sourceVersion == "" {
 				continue // no version has this page (shouldn't happen)
 			}
@@ -165,13 +167,17 @@ func (g *Generator) Generate() error {
 				IsInherited:     isInherited,
 				Pages:           pages,
 				CurrentPage:     page,
-				AllVersions:     g.Config.SoftwareVersions,
+				AllVersions:     g.SoftwareVersions,
 				BaseURL:         g.BaseURL,
 				VersionMap:      g.VersionMap,
 			}
 
 			outName := strings.TrimSuffix(page.Filename, ".md") + ".html"
 			outPath := filepath.Join(versionDir, outName)
+
+			if err := os.MkdirAll(filepath.Dir(outPath), 0o755); err != nil {
+				return err
+			}
 
 			var buf bytes.Buffer
 			if err := pageTmpl.Execute(&buf, data); err != nil {
@@ -187,7 +193,7 @@ func (g *Generator) Generate() error {
 
 	// Generate root index
 	var entries []VersionEntry
-	for _, sv := range g.Config.SoftwareVersions {
+	for _, sv := range g.SoftwareVersions {
 		dv := g.VersionMap[sv]
 		entries = append(entries, VersionEntry{
 			Software:   sv,
@@ -206,8 +212,8 @@ func (g *Generator) Generate() error {
 	pageMatrix := make(map[string]map[string]bool)
 	for _, pageName := range allPagesForIndex {
 		pageMatrix[pageName] = make(map[string]bool)
-		for _, sv := range g.Config.SoftwareVersions {
-			sourceVersion := ResolvePageVersion(sv, pageName+".md", g.Config.SoftwareVersions, pageVersions[pageName+".md"])
+		for _, sv := range g.SoftwareVersions {
+			sourceVersion := ResolvePageVersion(sv, pageName+".md", g.SoftwareVersions, pageVersions[pageName+".md"])
 			if sourceVersion != "" {
 				pageMatrix[pageName][sv] = (sourceVersion == sv) // true if authored
 			}
@@ -233,35 +239,49 @@ func (g *Generator) Generate() error {
 
 func (g *Generator) loadVersionContent(version string, md goldmark.Markdown) ([]DocPage, error) {
 	dir := filepath.Join(g.ContentDir, version)
-	entries, err := os.ReadDir(dir)
-	if err != nil {
+
+	// Check directory exists before walking
+	if _, err := os.Stat(dir); err != nil {
 		return nil, err
 	}
 
 	var pages []DocPage
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
-			continue
+	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() || !strings.HasSuffix(d.Name(), ".md") {
+			return nil
 		}
 
-		data, err := os.ReadFile(filepath.Join(dir, e.Name()))
+		relPath, err := filepath.Rel(dir, path)
 		if err != nil {
-			return nil, err
+			return err
+		}
+		relPath = filepath.ToSlash(relPath)
+
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
 		}
 
 		var htmlBuf bytes.Buffer
 		if err := md.Convert(data, &htmlBuf); err != nil {
-			return nil, fmt.Errorf("converting %s: %w", e.Name(), err)
+			return fmt.Errorf("converting %s: %w", relPath, err)
 		}
 
-		title := extractTitle(string(data), e.Name())
+		title := extractTitle(string(data), filepath.Base(relPath))
 
 		pages = append(pages, DocPage{
-			Filename: e.Name(),
+			Filename: relPath,
 			Title:    title,
 			Markdown: string(data),
 			HTML:     template.HTML(htmlBuf.String()),
 		})
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	sort.Slice(pages, func(i, j int) bool {
@@ -325,7 +345,7 @@ func (g *Generator) generateLLMSIndex() error {
 	b.WriteString("Reverse-engineered documentation.\n\n")
 	b.WriteString("## Versions\n\n")
 
-	for _, sv := range g.Config.SoftwareVersions {
+	for _, sv := range g.SoftwareVersions {
 		dv := g.VersionMap[sv]
 		marker := ""
 		if sv != dv {
@@ -339,7 +359,15 @@ func (g *Generator) generateLLMSIndex() error {
 }
 
 var funcMap = template.FuncMap{
-	"trimmd": func(s string) string { return strings.TrimSuffix(s, ".md") },
+	"trimmd":   func(s string) string { return strings.TrimSuffix(s, ".md") },
+	"basename": func(s string) string { return filepath.Base(s) },
+	"dirname": func(s string) string {
+		d := filepath.Dir(s)
+		if d == "." {
+			return ""
+		}
+		return d
+	},
 }
 
 func (g *Generator) loadPageTemplate() (*template.Template, error) {

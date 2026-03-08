@@ -7,10 +7,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Use `go-safe-build` instead of `go build`:
 
 ```sh
-go-safe-build --min-coverage 10 -o versioned-docs
+go-safe-build
 ```
 
-This runs tests, checks coverage, and builds if coverage threshold is met.
+This runs tests, checks coverage (80% threshold), and builds to `build/versioned-docs`.
 
 ## What This Tool Does
 
@@ -24,7 +24,7 @@ Generates versioned documentation with sparse inheritance:
 ## Usage
 
 ```sh
-./versioned-docs -config config.yaml -content content/ -out site/
+./build/versioned-docs -config config.yaml -content content/ -out site/
 ```
 
 ## Config Format (config.yaml)
@@ -33,10 +33,9 @@ Generates versioned documentation with sparse inheritance:
 project: myproject
 repo: https://github.com/user/myproject
 
-software_versions:
-  - "1.0.0"
-  - "1.1.0"
-  - "1.2.0"
+version_command: "./versions.sh"
 ```
 
-Documented versions are auto-detected by scanning the content directory for version subdirectories. Versions without a content folder inherit from the nearest documented version.
+The tool runs `version_command` from the config file's directory, reads stdout (one version per line), and uses that as the software versions list. Order is preserved from script output.
+
+Documented versions are auto-detected by scanning the content directory for version subdirectories. All content directories must be in the software versions list (catches typos/misconfigs). Versions without a content folder inherit from the nearest documented version.

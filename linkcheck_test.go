@@ -6,6 +6,8 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"github.com/wow-look-at-my/testify/assert"
+	"github.com/wow-look-at-my/testify/require"
 )
 
 func TestNoDeadLinks(t *testing.T) {
@@ -24,30 +26,28 @@ func TestNoDeadLinks(t *testing.T) {
 
 	// Load config and generate
 	cfg, err := LoadConfig(configPath)
-	if err != nil {
-		t.Fatalf("LoadConfig: %v", err)
-	}
+	require.Nil(t, err)
 
-	documentedVersions, err := DiscoverDocumentedVersions(contentDir, cfg.SoftwareVersions)
-	if err != nil {
-		t.Fatalf("DiscoverDocumentedVersions: %v", err)
-	}
+	softwareVersions, err := LoadSoftwareVersions(cfg)
+	require.Nil(t, err)
 
-	vmap := ResolveVersionMap(cfg.SoftwareVersions, documentedVersions)
+	documentedVersions, err := DiscoverDocumentedVersions(contentDir, softwareVersions)
+	require.Nil(t, err)
+
+	vmap := ResolveVersionMap(softwareVersions, documentedVersions)
 
 	gen := &Generator{
-		Config:             cfg,
-		VersionMap:         vmap,
-		DocumentedVersions: documentedVersions,
-		ContentDir:         contentDir,
-		TemplateDir:        "templates",
-		OutputDir:          outputDir,
-		BaseURL:            "",
+		Config:			cfg,
+		SoftwareVersions:	softwareVersions,
+		VersionMap:		vmap,
+		DocumentedVersions:	documentedVersions,
+		ContentDir:		contentDir,
+		TemplateDir:		"templates",
+		OutputDir:		outputDir,
+		BaseURL:		"",
 	}
 
-	if err := gen.Generate(); err != nil {
-		t.Fatalf("Generate: %v", err)
-	}
+	require.NoError(t, gen.Generate())
 
 	// Find all HTML files
 	var htmlFiles []string
@@ -60,9 +60,7 @@ func TestNoDeadLinks(t *testing.T) {
 		}
 		return nil
 	})
-	if err != nil {
-		t.Fatalf("walking output: %v", err)
-	}
+	require.Nil(t, err)
 
 	// Regex to find href attributes
 	hrefRe := regexp.MustCompile(`href="([^"]+)"`)
@@ -70,9 +68,7 @@ func TestNoDeadLinks(t *testing.T) {
 	// Check each HTML file for dead links
 	for _, htmlFile := range htmlFiles {
 		data, err := os.ReadFile(htmlFile)
-		if err != nil {
-			t.Fatalf("reading %s: %v", htmlFile, err)
-		}
+		require.Nil(t, err)
 
 		matches := hrefRe.FindAllStringSubmatch(string(data), -1)
 		for _, match := range matches {
@@ -99,10 +95,9 @@ func TestNoDeadLinks(t *testing.T) {
 			}
 
 			// Check if target exists
-			if _, err := os.Stat(targetPath); os.IsNotExist(err) {
-				relHTML, _ := filepath.Rel(outputDir, htmlFile)
-				t.Errorf("dead link in %s: %s -> %s", relHTML, href, targetPath)
-			}
+			_, err := os.Stat(targetPath)
+			assert.False(t, os.IsNotExist(err))
+
 		}
 	}
 }

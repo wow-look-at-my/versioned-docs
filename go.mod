@@ -3,6 +3,7 @@ module github.com/wow-look-at-my/versioned-docs
 go 1.23.4
 
 require (
+	github.com/wow-look-at-my/testify v0.0.0-20260217010200-5fd2c08e3abb
 	github.com/yuin/goldmark v1.7.16
 	github.com/yuin/goldmark-highlighting/v2 v2.0.0-20230729083705-37449abec8cc
 	gopkg.in/yaml.v3 v3.0.1

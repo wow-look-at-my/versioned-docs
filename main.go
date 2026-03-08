@@ -20,16 +20,27 @@ func main() {
 		os.Exit(1)
 	}
 
-	documentedVersions, err := DiscoverDocumentedVersions(*contentDir, cfg.SoftwareVersions)
+	if err := RunContentCommand(cfg); err != nil {
+		fmt.Fprintf(os.Stderr, "error running content command: %v\n", err)
+		os.Exit(1)
+	}
+
+	softwareVersions, err := LoadSoftwareVersions(cfg)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error loading software versions: %v\n", err)
+		os.Exit(1)
+	}
+
+	documentedVersions, err := DiscoverDocumentedVersions(*contentDir, softwareVersions)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error discovering documented versions: %v\n", err)
 		os.Exit(1)
 	}
 
-	vmap := ResolveVersionMap(cfg.SoftwareVersions, documentedVersions)
+	vmap := ResolveVersionMap(softwareVersions, documentedVersions)
 
 	fmt.Println("Version mapping:")
-	for _, sv := range cfg.SoftwareVersions {
+	for _, sv := range softwareVersions {
 		dv := vmap[sv]
 		marker := ""
 		if sv == dv {
@@ -40,6 +51,7 @@ func main() {
 
 	gen := &Generator{
 		Config:             cfg,
+		SoftwareVersions:   softwareVersions,
 		VersionMap:         vmap,
 		DocumentedVersions: documentedVersions,
 		ContentDir:         *contentDir,
