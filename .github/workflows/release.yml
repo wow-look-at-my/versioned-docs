@@ -2,7 +2,6 @@ name: Release
 
 on:
   push:
-    tags: ['v*']
 
 permissions:
   contents: write
@@ -10,32 +9,9 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        include:
-          - goos: linux
-            goarch: amd64
-          - goos: linux
-            goarch: arm64
-          - goos: darwin
-            goarch: amd64
-          - goos: darwin
-            goarch: arm64
-          - goos: windows
-            goarch: amd64
     steps:
       - uses: actions/checkout@v4
-
-      - uses: wow-look-at-my/go-toolchain@v1
-
-      - name: Build
-        env:
-          GOOS: ${{ matrix.goos }}
-          GOARCH: ${{ matrix.goarch }}
-        run: |
-          ext=""
-          if [ "$GOOS" = "windows" ]; then ext=".exe"; fi
-          go build -trimpath -ldflags="-s -w" -o "versioned-docs_${GOOS}_${GOARCH}${ext}" .
+      - uses: wow-look-at-my/go-toolchain@latest
 
       - name: Upload release asset
         env:
