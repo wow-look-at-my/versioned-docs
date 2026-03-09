@@ -14,13 +14,12 @@ jobs:
       - uses: actions/checkout@v4
       - uses: wow-look-at-my/go-toolchain@latest
 
-      - name: Create or update rolling release
+      - name: Create release and upload binaries
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # Delete existing "latest" release so we can recreate it
-          gh release delete latest --yes 2>/dev/null || true
-          git tag -f latest
-          git push origin latest --force
-          gh release create latest --title "Latest" --notes "Built from $(git rev-parse --short HEAD)" --latest
-          gh release upload latest build/versioned-docs_* --clobber
+          tag="v$(date -u +%Y%m%d%H%M%S)-$(git rev-parse --short HEAD)"
+          git tag "$tag"
+          git push origin "$tag"
+          gh release create "$tag" --generate-notes
+          gh release upload "$tag" build/versioned-docs_* --clobber
