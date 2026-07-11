@@ -1,13 +1,13 @@
 package main
 
 import (
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
-	"github.com/wow-look-at-my/testify/assert"
-	"github.com/wow-look-at-my/testify/require"
 )
 
 func TestNoDeadLinks(t *testing.T) {
@@ -37,14 +37,14 @@ func TestNoDeadLinks(t *testing.T) {
 	vmap := ResolveVersionMap(softwareVersions, documentedVersions)
 
 	gen := &Generator{
-		Config:			cfg,
-		SoftwareVersions:	softwareVersions,
-		VersionMap:		vmap,
-		DocumentedVersions:	documentedVersions,
-		ContentDir:		contentDir,
-		TemplateDir:		"templates",
-		OutputDir:		outputDir,
-		BaseURL:		"",
+		Config:             cfg,
+		SoftwareVersions:   softwareVersions,
+		VersionMap:         vmap,
+		DocumentedVersions: documentedVersions,
+		ContentDir:         contentDir,
+		TemplateDir:        "templates",
+		OutputDir:          outputDir,
+		BaseURL:            "",
 	}
 
 	require.NoError(t, gen.Generate())

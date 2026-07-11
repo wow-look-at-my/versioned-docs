@@ -5,41 +5,41 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/yuin/goldmark"
-	"github.com/wow-look-at-my/testify/assert"
-	"github.com/wow-look-at-my/testify/require"
 )
 
 func TestExtractTitle(t *testing.T) {
 	tests := []struct {
-		name		string
-		markdown	string
-		filename	string
-		want		string
+		name     string
+		markdown string
+		filename string
+		want     string
 	}{
 		{
-			name:		"h1 title",
-			markdown:	"# My Title\n\nSome content",
-			filename:	"page.md",
-			want:		"My Title",
+			name:     "h1 title",
+			markdown: "# My Title\n\nSome content",
+			filename: "page.md",
+			want:     "My Title",
 		},
 		{
-			name:		"h1 with leading whitespace",
-			markdown:	"  # Spaced Title\n\nContent",
-			filename:	"page.md",
-			want:		"Spaced Title",
+			name:     "h1 with leading whitespace",
+			markdown: "  # Spaced Title\n\nContent",
+			filename: "page.md",
+			want:     "Spaced Title",
 		},
 		{
-			name:		"no h1 uses filename",
-			markdown:	"Some content without heading",
-			filename:	"api.md",
-			want:		"api",
+			name:     "no h1 uses filename",
+			markdown: "Some content without heading",
+			filename: "api.md",
+			want:     "api",
 		},
 		{
-			name:		"h2 ignored uses filename",
-			markdown:	"## Not H1\n\nContent",
-			filename:	"guide.md",
-			want:		"guide",
+			name:     "h2 ignored uses filename",
+			markdown: "## Not H1\n\nContent",
+			filename: "guide.md",
+			want:     "guide",
 		},
 	}
 
@@ -180,20 +180,20 @@ func TestGenerator_Generate_PageLevelInheritance(t *testing.T) {
 
 	g := &Generator{
 		Config: &Config{
-			Project:	"testproj",
-			Repo:		"https://github.com/test/test",
+			Project: "testproj",
+			Repo:    "https://github.com/test/test",
 		},
-		SoftwareVersions:	[]string{"v1", "v2", "v3"},
+		SoftwareVersions: []string{"v1", "v2", "v3"},
 		VersionMap: map[string]string{
-			"v1":	"v2",
-			"v2":	"v2",
-			"v3":	"v3",
+			"v1": "v2",
+			"v2": "v2",
+			"v3": "v3",
 		},
-		DocumentedVersions:	[]string{"v2", "v3"},
-		ContentDir:		contentDir,
-		TemplateDir:		filepath.Join(tmp, "templates"),
-		OutputDir:		outputDir,
-		BaseURL:		"",
+		DocumentedVersions: []string{"v2", "v3"},
+		ContentDir:         contentDir,
+		TemplateDir:        filepath.Join(tmp, "templates"),
+		OutputDir:          outputDir,
+		BaseURL:            "",
 	}
 
 	require.NoError(t, g.Generate())
@@ -229,16 +229,16 @@ func TestGenerator_Generate_BasicOutput(t *testing.T) {
 
 	g := &Generator{
 		Config: &Config{
-			Project:	"testproj",
-			Repo:		"https://github.com/test/test",
+			Project: "testproj",
+			Repo:    "https://github.com/test/test",
 		},
-		SoftwareVersions:	[]string{"v1"},
-		VersionMap:		map[string]string{"v1": "v1"},
-		DocumentedVersions:	[]string{"v1"},
-		ContentDir:		contentDir,
-		TemplateDir:		filepath.Join(tmp, "templates"),
-		OutputDir:		outputDir,
-		BaseURL:		"",
+		SoftwareVersions:   []string{"v1"},
+		VersionMap:         map[string]string{"v1": "v1"},
+		DocumentedVersions: []string{"v1"},
+		ContentDir:         contentDir,
+		TemplateDir:        filepath.Join(tmp, "templates"),
+		OutputDir:          outputDir,
+		BaseURL:            "",
 	}
 
 	require.NoError(t, g.Generate())
@@ -270,16 +270,16 @@ func TestGenerator_Generate_ContentLoadError(t *testing.T) {
 
 	g := &Generator{
 		Config: &Config{
-			Project:	"testproj",
-			Repo:		"https://github.com/test/test",
+			Project: "testproj",
+			Repo:    "https://github.com/test/test",
 		},
-		SoftwareVersions:	[]string{"v1"},
-		VersionMap:		map[string]string{"v1": "v1"},
-		DocumentedVersions:	[]string{"v1"},
-		ContentDir:		"/nonexistent/path",
-		TemplateDir:		filepath.Join(tmp, "templates"),
-		OutputDir:		outputDir,
-		BaseURL:		"",
+		SoftwareVersions:   []string{"v1"},
+		VersionMap:         map[string]string{"v1": "v1"},
+		DocumentedVersions: []string{"v1"},
+		ContentDir:         "/nonexistent/path",
+		TemplateDir:        filepath.Join(tmp, "templates"),
+		OutputDir:          outputDir,
+		BaseURL:            "",
 	}
 
 	err := g.Generate()
@@ -336,16 +336,16 @@ func TestGenerator_generateLLMSIndex(t *testing.T) {
 
 	g := &Generator{
 		Config: &Config{
-			Project:	"testproj",
-			Repo:		"https://github.com/test/test",
+			Project: "testproj",
+			Repo:    "https://github.com/test/test",
 		},
-		SoftwareVersions:	[]string{"v1", "v2"},
+		SoftwareVersions: []string{"v1", "v2"},
 		VersionMap: map[string]string{
-			"v1":	"v2",
-			"v2":	"v2",
+			"v1": "v2",
+			"v2": "v2",
 		},
-		OutputDir:	tmp,
-		BaseURL:	"/docs",
+		OutputDir: tmp,
+		BaseURL:   "/docs",
 	}
 
 	require.NoError(t, g.generateLLMSIndex())
@@ -367,8 +367,8 @@ func TestGenerator_generateVersionLLMDoc(t *testing.T) {
 
 	g := &Generator{
 		Config: &Config{
-			Project:	"testproj",
-			Repo:		"https://github.com/test/test",
+			Project: "testproj",
+			Repo:    "https://github.com/test/test",
 		},
 	}
 
@@ -407,16 +407,16 @@ func TestGenerator_Generate_EmptyDocVersion(t *testing.T) {
 
 	g := &Generator{
 		Config: &Config{
-			Project:	"testproj",
-			Repo:		"https://github.com/test/test",
+			Project: "testproj",
+			Repo:    "https://github.com/test/test",
 		},
-		SoftwareVersions:	[]string{"v1"},
-		VersionMap:		map[string]string{"v1": "v1"},
-		DocumentedVersions:	[]string{"v1"},
-		ContentDir:		contentDir,
-		TemplateDir:		filepath.Join(tmp, "templates"),
-		OutputDir:		outputDir,
-		BaseURL:		"",
+		SoftwareVersions:   []string{"v1"},
+		VersionMap:         map[string]string{"v1": "v1"},
+		DocumentedVersions: []string{"v1"},
+		ContentDir:         contentDir,
+		TemplateDir:        filepath.Join(tmp, "templates"),
+		OutputDir:          outputDir,
+		BaseURL:            "",
 	}
 
 	// Should succeed with no pages
@@ -480,16 +480,16 @@ func TestGenerator_Generate_SubdirectoryOutput(t *testing.T) {
 
 	g := &Generator{
 		Config: &Config{
-			Project:	"testproj",
-			Repo:		"https://github.com/test/test",
+			Project: "testproj",
+			Repo:    "https://github.com/test/test",
 		},
-		SoftwareVersions:	[]string{"v1", "v2"},
-		VersionMap:		map[string]string{"v1": "v1", "v2": "v1"},
-		DocumentedVersions:	[]string{"v1"},
-		ContentDir:		contentDir,
-		TemplateDir:		filepath.Join(tmp, "templates"),
-		OutputDir:		outputDir,
-		BaseURL:		"",
+		SoftwareVersions:   []string{"v1", "v2"},
+		VersionMap:         map[string]string{"v1": "v1", "v2": "v1"},
+		DocumentedVersions: []string{"v1"},
+		ContentDir:         contentDir,
+		TemplateDir:        filepath.Join(tmp, "templates"),
+		OutputDir:          outputDir,
+		BaseURL:            "",
 	}
 
 	require.NoError(t, g.Generate())
@@ -529,20 +529,20 @@ func TestGenerator_Generate_MultipleVersionsMultiplePages(t *testing.T) {
 
 	g := &Generator{
 		Config: &Config{
-			Project:	"testproj",
-			Repo:		"https://github.com/test/test",
+			Project: "testproj",
+			Repo:    "https://github.com/test/test",
 		},
-		SoftwareVersions:	[]string{"v1", "v2", "v3"},
+		SoftwareVersions: []string{"v1", "v2", "v3"},
 		VersionMap: map[string]string{
-			"v1":	"v1",
-			"v2":	"v1",
-			"v3":	"v3",
+			"v1": "v1",
+			"v2": "v1",
+			"v3": "v3",
 		},
-		DocumentedVersions:	[]string{"v1", "v3"},
-		ContentDir:		contentDir,
-		TemplateDir:		filepath.Join(tmp, "templates"),
-		OutputDir:		outputDir,
-		BaseURL:		"/docs",
+		DocumentedVersions: []string{"v1", "v3"},
+		ContentDir:         contentDir,
+		TemplateDir:        filepath.Join(tmp, "templates"),
+		OutputDir:          outputDir,
+		BaseURL:            "/docs",
 	}
 
 	require.NoError(t, g.Generate())
