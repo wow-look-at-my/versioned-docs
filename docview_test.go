@@ -112,7 +112,9 @@ func terminationFixture(t *testing.T) (outputDir string) {
 	writeTestDoc(t, contentDir, "v1", "guide.md", "# Guide\n\nv1 content")
 	writeTestDoc(t, contentDir, "v1", "old-stuff.md", "# Old Stuff\n\nlegacy words")
 	writeTestDoc(t, contentDir, "v2", "guide.md", "# Guide\n\nv2 content")
-	writeTestDoc(t, contentDir, "v4", "guide.md", "# Guide\n\nv4 content")
+	// The relative in-content cross-link exercises the script.js .md->.html
+	// rewrite in the dead-link check.
+	writeTestDoc(t, contentDir, "v4", "guide.md", "# Guide\n\nv4 content\n\nSee [New Doc](new-doc.md).")
 	writeTestDoc(t, contentDir, "v4", "new-doc.md", "# New Doc\n\nshiny")
 
 	software := []string{"v1", "v2", "v3", "v4", "v5"}

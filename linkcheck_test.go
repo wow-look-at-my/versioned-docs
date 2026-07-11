@@ -56,6 +56,12 @@ func assertNoDeadLinks(t *testing.T, outputDir string) {
 			unescaped, err := url.PathUnescape(href)
 			require.NoError(t, err, "invalid escaping in href %q (%s)", href, htmlFile)
 
+			// Mirror static/script.js: relative in-content links to *.md are
+			// rewritten to the generated .html pages at runtime.
+			if strings.HasSuffix(unescaped, ".md") && !strings.HasPrefix(unescaped, "/") {
+				unescaped = strings.TrimSuffix(unescaped, ".md") + ".html"
+			}
+
 			// Resolve the link relative to the HTML file's directory
 			var targetPath string
 			if strings.HasPrefix(unescaped, "/") {
