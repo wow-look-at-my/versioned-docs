@@ -35,29 +35,19 @@ type DocPage struct {
 }
 
 type VersionPageData struct {
-	Project         string
-	SoftwareVersion string
-	DocsVersion     string // source version for CurrentPage
-	IsInherited     bool   // true if CurrentPage.SourceVersion != SoftwareVersion
-	Pages           []DocPage
-	CurrentPage     DocPage
-	AllVersions     []string
-	BaseURL         string
-	VersionMap      map[string]string
-}
-
-type IndexPageData struct {
-	Project    string
-	Versions   []VersionEntry
-	AllPages   []string
-	PageMatrix map[string]map[string]bool // page -> version -> isAuthored
-	BaseURL    string
-}
-
-type VersionEntry struct {
-	Software   string
-	Docs       string
-	IsAuthored bool
+	Project          string
+	SoftwareVersion  string
+	DocsVersion      string // source version for CurrentPage
+	IsInherited      bool   // true if CurrentPage.SourceVersion != SoftwareVersion
+	TerminatedAt     string // termination version of CurrentPage, "" when not terminated
+	IsRemoved        bool   // CurrentPage is terminated before the current version
+	Pages            []DocPage
+	CurrentPage      DocPage
+	CurrentPageChain []string // versions with authored content for CurrentPage, newest first
+	PageVersions     []string // documented versions where CurrentPage is visible (select targets)
+	CurrentVersion   string   // newest software version
+	DocURL           string   // URL of CurrentPage's logical (doc-centric) page
+	BaseURL          string
 }
 
 func (g *Generator) Generate() error {
@@ -109,20 +99,21 @@ func (g *Generator) Generate() error {
 		}
 	}
 
+	// Validate the tombstone config against the version list and doc set.
+	term, err := newTermination(g.SoftwareVersions, g.Config.Terminated, pageVersions)
+	if err != nil {
+		return err
+	}
+
+	chains := buildDocChains(g.SoftwareVersions, pageVersions)
+	current := g.SoftwareVersions[len(g.SoftwareVersions)-1]
+
 	// Collect all unique page names
 	var allPageNames []string
 	for pageName := range pageVersions {
 		allPageNames = append(allPageNames, pageName)
 	}
-	sort.Slice(allPageNames, func(i, j int) bool {
-		if allPageNames[i] == "index.md" {
-			return true
-		}
-		if allPageNames[j] == "index.md" {
-			return false
-		}
-		return allPageNames[i] < allPageNames[j]
-	})
+	sortDocPaths(allPageNames)
 
 	pageTmpl, err := g.loadPageTemplate()
 	if err != nil {
@@ -134,11 +125,27 @@ func (g *Generator) Generate() error {
 		return fmt.Errorf("loading index template: %w", err)
 	}
 
-	// Generate per-version output with page-level inheritance
-	for _, sv := range g.SoftwareVersions {
+	docTmpl, err := g.loadDocTemplate()
+	if err != nil {
+		return fmt.Errorf("loading doc template: %w", err)
+	}
+
+	versionsTmpl, err := g.loadVersionsTemplate()
+	if err != nil {
+		return fmt.Errorf("loading versions template: %w", err)
+	}
+
+	// Generate per-version (history) output with page-level inheritance.
+	// Only documented versions get a directory: an undocumented version
+	// renders byte-identical content to the nearest documented one, and the
+	// version pickers only link authored versions.
+	for _, sv := range g.DocumentedVersions {
 		// Resolve each page independently
 		var pages []DocPage
 		for _, pageName := range allPageNames {
+			if !term.visibleAt(pageName, sv) {
+				continue // terminated before this version
+			}
 			sourceVersion := ResolvePageVersion(sv, pageName, g.SoftwareVersions, pageVersions[pageName])
 			if sourceVersion == "" {
 				continue // no version has this page (shouldn't happen)
@@ -158,18 +165,36 @@ func (g *Generator) Generate() error {
 		}
 
 		for _, page := range pages {
-			isInherited := page.SourceVersion != sv
+			chain := chains[page.Filename]
+			chainDesc := make([]string, len(chain))
+			for i, v := range chain {
+				chainDesc[len(chain)-1-i] = v
+			}
+
+			// The version select only offers documented versions where this
+			// page is visible: the same page exists there, so switching
+			// versions keeps the reader on the same document.
+			var pageVersionsVisible []string
+			for _, dv := range g.DocumentedVersions {
+				if term.visibleAt(page.Filename, dv) {
+					pageVersionsVisible = append(pageVersionsVisible, dv)
+				}
+			}
 
 			data := VersionPageData{
-				Project:         g.Config.Project,
-				SoftwareVersion: sv,
-				DocsVersion:     page.SourceVersion,
-				IsInherited:     isInherited,
-				Pages:           pages,
-				CurrentPage:     page,
-				AllVersions:     g.SoftwareVersions,
-				BaseURL:         g.BaseURL,
-				VersionMap:      g.VersionMap,
+				Project:          g.Config.Project,
+				SoftwareVersion:  sv,
+				DocsVersion:      page.SourceVersion,
+				IsInherited:      page.SourceVersion != sv,
+				TerminatedAt:     term.terminatedAt(page.Filename),
+				IsRemoved:        term.removedBefore(page.Filename, current),
+				Pages:            pages,
+				CurrentPage:      page,
+				CurrentPageChain: chainDesc,
+				PageVersions:     pageVersionsVisible,
+				CurrentVersion:   current,
+				DocURL:           g.BaseURL + "/docs/" + strings.TrimSuffix(page.Filename, ".md") + ".html",
+				BaseURL:          g.BaseURL,
 			}
 
 			outName := strings.TrimSuffix(page.Filename, ".md") + ".html"
@@ -191,42 +216,22 @@ func (g *Generator) Generate() error {
 		g.generateVersionLLMDoc(versionDir, sv, pages)
 	}
 
-	// Generate root index
-	var entries []VersionEntry
-	for _, sv := range g.SoftwareVersions {
-		dv := g.VersionMap[sv]
-		entries = append(entries, VersionEntry{
-			Software:   sv,
-			Docs:       dv,
-			IsAuthored: sv == dv,
-		})
-	}
+	// Doc-centric outputs: the logical doc pages (newest authored content
+	// per doc), the root index, and the version-history matrix.
+	docs, removedDocs := buildDocEntries(chains, docContent, term, current)
 
-	// Build page matrix for index
-	var allPagesForIndex []string
-	for p := range pageVersions {
-		allPagesForIndex = append(allPagesForIndex, strings.TrimSuffix(p, ".md"))
-	}
-	sort.Strings(allPagesForIndex)
-
-	pageMatrix := make(map[string]map[string]bool)
-	for _, pageName := range allPagesForIndex {
-		pageMatrix[pageName] = make(map[string]bool)
-		for _, sv := range g.SoftwareVersions {
-			sourceVersion := ResolvePageVersion(sv, pageName+".md", g.SoftwareVersions, pageVersions[pageName+".md"])
-			if sourceVersion != "" {
-				pageMatrix[pageName][sv] = (sourceVersion == sv) // true if authored
-			}
-		}
+	if err := g.generateDocPages(docTmpl, docContent, chains, term, current, docs, removedDocs); err != nil {
+		return err
 	}
 
 	var buf bytes.Buffer
 	if err := indexTmpl.Execute(&buf, IndexPageData{
-		Project:    g.Config.Project,
-		Versions:   entries,
-		AllPages:   allPagesForIndex,
-		PageMatrix: pageMatrix,
-		BaseURL:    g.BaseURL,
+		Project:        g.Config.Project,
+		Repo:           g.Config.Repo,
+		CurrentVersion: current,
+		Docs:           docs,
+		RemovedDocs:    removedDocs,
+		BaseURL:        g.BaseURL,
 	}); err != nil {
 		return fmt.Errorf("rendering index: %w", err)
 	}
@@ -234,7 +239,19 @@ func (g *Generator) Generate() error {
 		return err
 	}
 
-	return g.generateLLMSIndex()
+	var vbuf bytes.Buffer
+	if err := versionsTmpl.Execute(&vbuf, g.buildVersionsPage(allPageNames, pageVersions, docContent, chains, term, current)); err != nil {
+		return fmt.Errorf("rendering versions: %w", err)
+	}
+	if err := os.WriteFile(filepath.Join(g.OutputDir, "versions.html"), vbuf.Bytes(), 0o644); err != nil {
+		return err
+	}
+
+	if err := g.generateLLMSFull(docs, docContent, current); err != nil {
+		return err
+	}
+
+	return g.generateLLMSIndex(docs, removedDocs, current)
 }
 
 func (g *Generator) loadVersionContent(version string, md goldmark.Markdown) ([]DocPage, error) {
@@ -338,21 +355,31 @@ func (g *Generator) writeStaticAssets() error {
 	return nil
 }
 
-func (g *Generator) generateLLMSIndex() error {
+// generateLLMSIndex writes the root llms.txt: the doc-centric listing (each
+// doc's newest URL, terminated docs split into a Removed section) plus the
+// per-version llms-full.md links for documented versions.
+func (g *Generator) generateLLMSIndex(docs, removedDocs []DocIndexEntry, current string) error {
 	var b strings.Builder
 	b.WriteString(fmt.Sprintf("# %s\n\n", g.Config.Project))
 	b.WriteString(fmt.Sprintf("> %s\n\n", g.Config.Repo))
-	b.WriteString("Reverse-engineered documentation.\n\n")
-	b.WriteString("## Versions\n\n")
+	b.WriteString(fmt.Sprintf("Reverse-engineered documentation. Current software version: %s.\n\n", current))
 
-	for _, sv := range g.SoftwareVersions {
-		dv := g.VersionMap[sv]
-		marker := ""
-		if sv != dv {
-			marker = fmt.Sprintf(" (using docs from %s)", dv)
+	b.WriteString("## Documents\n\n")
+	b.WriteString(fmt.Sprintf("Newest authored revision of every current document. Full bundle: [llms-full.md](%s/llms-full.md)\n\n", g.BaseURL))
+	for _, e := range docs {
+		b.WriteString(fmt.Sprintf("- [%s](%s/%s) — newest content authored for %s\n", e.Title, g.BaseURL, e.URLPath(), e.NewestVersion))
+	}
+
+	if len(removedDocs) > 0 {
+		b.WriteString("\n## Removed documents\n\n")
+		for _, e := range removedDocs {
+			b.WriteString(fmt.Sprintf("- [%s](%s/%s) — last applies to version %s\n", e.Title, g.BaseURL, e.URLPath(), e.TerminatedAt))
 		}
-		url := fmt.Sprintf("%s/%s/llms-full.md", g.BaseURL, sv)
-		b.WriteString(fmt.Sprintf("- [%s](%s)%s\n", sv, url, marker))
+	}
+
+	b.WriteString("\n## Versions\n\n")
+	for _, dv := range g.DocumentedVersions {
+		b.WriteString(fmt.Sprintf("- [%s](%s/%s/llms-full.md)\n", dv, g.BaseURL, dv))
 	}
 
 	return os.WriteFile(filepath.Join(g.OutputDir, "llms.txt"), []byte(b.String()), 0o644)
@@ -384,4 +411,20 @@ func (g *Generator) loadIndexTemplate() (*template.Template, error) {
 		return template.New("index").Funcs(funcMap).Parse(string(data))
 	}
 	return template.New("index").Funcs(funcMap).Parse(string(defaultIndexTemplateBytes))
+}
+
+func (g *Generator) loadDocTemplate() (*template.Template, error) {
+	path := filepath.Join(g.TemplateDir, "doc.html")
+	if data, err := os.ReadFile(path); err == nil {
+		return template.New("doc").Funcs(funcMap).Parse(string(data))
+	}
+	return template.New("doc").Funcs(funcMap).Parse(string(defaultDocTemplateBytes))
+}
+
+func (g *Generator) loadVersionsTemplate() (*template.Template, error) {
+	path := filepath.Join(g.TemplateDir, "versions.html")
+	if data, err := os.ReadFile(path); err == nil {
+		return template.New("versions").Funcs(funcMap).Parse(string(data))
+	}
+	return template.New("versions").Funcs(funcMap).Parse(string(defaultVersionsTemplateBytes))
 }
