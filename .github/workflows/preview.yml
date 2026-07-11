@@ -24,6 +24,12 @@ jobs:
 
       - uses: wow-look-at-my/go-toolchain@v1
 
+      # See ci.yml: attributes a corpus-fetch failure to the right credential.
+      - name: Report corpus credential source
+        env:
+          HAS_ORG_READ: ${{ secrets.PRIVATE_ORG_REPO_READ != '' }}
+        run: echo "PRIVATE_ORG_REPO_READ available to this run: $HAS_ORG_READ (false = falling back to GITHUB_TOKEN, which cannot read the private corpus repo)"
+
       - name: Build site from the claude-docs-gaps corpus
         env:
           # See ci.yml: the corpus repo is private and cross-owner, so the

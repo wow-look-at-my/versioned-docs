@@ -50,6 +50,15 @@ jobs:
         id: branch
         run: echo "branch=${GITHUB_REF_NAME//\//-}" >> "$GITHUB_OUTPUT"
 
+      # Diagnostic: says which credential the corpus fetch uses, so a
+      # "Repository not found" failure below is attributable (org secret
+      # missing for this repo vs. token lacking access to the private
+      # cross-owner corpus repo).
+      - name: Report corpus credential source
+        env:
+          HAS_ORG_READ: ${{ secrets.PRIVATE_ORG_REPO_READ != '' }}
+        run: echo "PRIVATE_ORG_REPO_READ available to this run: $HAS_ORG_READ (false = falling back to GITHUB_TOKEN, which cannot read the private corpus repo)"
+
       - name: Build site from the claude-docs-gaps corpus
         env:
           # claude-docs-gaps is PRIVATE and owned by PazerOP (a different
