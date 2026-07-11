@@ -83,11 +83,15 @@ Both commands run via `sh -c` from the config file's directory.
 
 ## CI / deploy
 
-`.github/workflows/ci.yml`: `test` (go-toolchain) on every push; `deploy`
-(master pushes + any `workflow_dispatch`) rebuilds the site from the real
-corpus (secret `PRIVATE_ORG_REPO_READ` — the corpus repo is private and
-cross-owner) and publishes to buildhost. `refresh.yml` is a cron that only
-re-dispatches ci.yml, because buildhost rejects OIDC from `schedule`-event
-runs. `preview.yml` deploys PR previews via the org's reusable
-buildhost-preview workflow. Keep the `test` job's name — the org's
-`all-builds` merge gate aggregates automatically.
+`.github/workflows/ci.yml`: `test` (go-toolchain, `autorelease: 'false'` —
+autorelease hard-fails pushes that leave Go sources unchanged) on every push;
+`deploy` (master pushes + any `workflow_dispatch`) rebuilds the site from the
+real corpus and publishes to buildhost — it needs the `PRIVATE_ORG_REPO_READ`
+secret granted to this repo with a token that can read the private
+cross-owner corpus repo, and fails loudly without it. `refresh.yml` is a cron
+that only re-dispatches ci.yml, because buildhost rejects OIDC from
+`schedule`-event runs. `preview.yml` deploys PR previews via the org's
+reusable buildhost-preview workflow, downgrading to a warning (not a failure)
+when the corpus is unreadable so the `all-builds` gate stays meaningful. Keep
+the `test` job's name — the org's `all-builds` merge gate aggregates
+automatically.

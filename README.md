@@ -139,20 +139,25 @@ documented versions). `gapsdocs/content/`, `gapsdocs/versions.txt`, and
 
 ## CI / deploy
 
-- **ci.yml** — `test` (go-toolchain: tests, 80% coverage gate, build) on every
+- **ci.yml** — `test` (go-toolchain: tests, 80% coverage gate, build;
+  `autorelease` disabled — the site, not the binary, is this repo's product,
+  and autorelease hard-fails pushes that leave Go sources unchanged) on every
   push, uploading the build as an artifact; `deploy` (master pushes and every
-  `workflow_dispatch`) downloads that artifact, fetches the corpus with the
-  org-wide `PRIVATE_ORG_REPO_READ` secret (the corpus repo is private and
-  cross-owner — the default token cannot read it), builds the site, and
-  publishes it to buildhost under `branch/<ref-name>` via
-  `buildhost-publish-site` (OIDC).
+  `workflow_dispatch`) downloads that artifact, fetches the corpus, builds
+  the site, and publishes it to buildhost under `branch/<ref-name>` via
+  `buildhost-publish-site` (OIDC). The corpus repo is private and cross-owner
+  — the default token cannot read it, so the `PRIVATE_ORG_REPO_READ` secret
+  must be granted to this repo with a token that can read
+  `PazerOP/claude-docs-gaps`; the deploy fails loudly until it is.
 - **refresh.yml** — cron every 3 days that only re-dispatches ci.yml on
   master. The indirection is load-bearing: buildhost rejects OIDC tokens from
   `schedule`-event runs, so a direct scheduled deploy would 401 (this exact
   failure broke the upstream claude-docs-gaps aggregate cron).
 - **preview.yml** — builds the site for each PR and delegates to the org's
   reusable `buildhost-preview` workflow (deploys to `branch/pr-<n>` and posts
-  a sticky comment with the URL).
+  a sticky comment with the URL). Unlike the deploy job, an unreadable corpus
+  only downgrades the preview to a workflow warning — otherwise the required
+  `all-builds` gate would stay red on every PR until the credential exists.
 
 ## Development
 
