@@ -1,0 +1,38 @@
+name: Scheduled site refresh
+
+# Rebuilds and redeploys the site on a schedule by RE-DISPATCHING ci.yml on
+# master instead of deploying directly.
+#
+# Why the indirection: buildhost rejects GitHub OIDC tokens minted in
+# `schedule`-event workflow runs ("authentication required: OIDC token
+# rejected: event \"schedule\" not in allowed list") — exactly the failure
+# that broke claude-docs-gaps' own scheduled aggregate workflow. A
+# `workflow_dispatch` run mints a token buildhost accepts, so the cron job's
+# only action is to trigger a workflow_dispatch of CI; CI's deploy job then
+# fetches the corpus, rebuilds, and publishes.
+
+on:
+  schedule:
+    # Every 3 days at 03:30 UTC — a few hours after claude-docs-gaps'
+    # aggregate cron (30 0 */3 * *) so a freshly rebuilt corpus is picked up.
+    - cron: '30 3 */3 * *'
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  redispatch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: wow-look-at-my/actions@typescript#latest
+        with:
+          script: |
+            await octokit.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: "ci.yml",
+              ref: "master",
+            });
+            core.info("Dispatched ci.yml on master; its deploy job rebuilds and publishes the site.");

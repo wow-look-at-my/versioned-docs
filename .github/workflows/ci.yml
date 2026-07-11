@@ -2,7 +2,14 @@ name: CI
 
 on:
   push:
+  # workflow_dispatch serves two purposes: manual runs, and the scheduled
+  # refresh (refresh.yml re-dispatches this workflow because buildhost
+  # rejects OIDC tokens minted in schedule-event runs).
   workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
 
 jobs:
   test:
@@ -11,3 +18,53 @@ jobs:
       - uses: actions/checkout@v4
 
       - uses: wow-look-at-my/go-toolchain@v1
+
+      # The deploy job reuses this build instead of running go-toolchain a
+      # second time: go-toolchain auto-publishes binaries to buildhost via
+      # OIDC, and buildhost only accepts OIDC tokens from allowlisted event
+      # types — keeping go-toolchain out of the deploy job keeps dispatched
+      # deploys from dying inside the toolchain step.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: versioned-docs-build
+          path: build/
+
+  deploy:
+    needs: test
+    if: >-
+      (github.event_name == 'push' && github.ref == 'refs/heads/master') ||
+      github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: versioned-docs-build
+          path: build
+
+      # Site branch = git ref with slashes flattened (matches how other org
+      # repos publish, e.g. cc-marketplace). master deploys to
+      # sites.pazer.build/versioned-docs/branch/master/.
+      - name: Compute site branch name
+        id: branch
+        run: echo "branch=${GITHUB_REF_NAME//\//-}" >> "$GITHUB_OUTPUT"
+
+      - name: Build site from the claude-docs-gaps corpus
+        env:
+          # claude-docs-gaps is PRIVATE and owned by PazerOP (a different
+          # owner), so this repo's GITHUB_TOKEN cannot read it. The org-wide
+          # PRIVATE_ORG_REPO_READ secret is required; if it is missing or
+          # lacks access, fetch-aggregate fails loudly with a clear error.
+          GAPS_REMOTE_URL: https://x-access-token:${{ secrets.PRIVATE_ORG_REPO_READ || secrets.GITHUB_TOKEN }}@github.com/PazerOP/claude-docs-gaps.git
+        run: |
+          chmod +x build/versioned-docs
+          ./build/versioned-docs -config gapsdocs/config.yaml -content gapsdocs/content -out site -base-url "/versioned-docs/branch/${{ steps.branch.outputs.branch }}"
+
+      - name: Publish site to buildhost
+        uses: wow-look-at-my/buildhost/.github/actions/buildhost-publish-site@master
+        with:
+          server: https://pazer.build
+          project: versioned-docs
+          branch: ${{ steps.branch.outputs.branch }}
+          source_dir: site

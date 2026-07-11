@@ -1,0 +1,44 @@
+name: PR Preview
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, closed]
+
+# Caller permissions required by the reusable buildhost-preview workflow:
+# id-token for the OIDC upload, actions: read for the artifact download,
+# pull-requests: write for the sticky preview comment.
+permissions:
+  contents: read
+  actions: read
+  pull-requests: write
+  id-token: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    # buildhost-preview has no cleanup path, so a closed PR just stops
+    # deploying (previews are per-branch uploads on buildhost).
+    if: github.event.action != 'closed'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: wow-look-at-my/go-toolchain@v1
+
+      - name: Build site from the claude-docs-gaps corpus
+        env:
+          # See ci.yml: the corpus repo is private and cross-owner, so the
+          # org-wide read secret is required; the fetch fails loudly without it.
+          GAPS_REMOTE_URL: https://x-access-token:${{ secrets.PRIVATE_ORG_REPO_READ || secrets.GITHUB_TOKEN }}@github.com/PazerOP/claude-docs-gaps.git
+        run: ./build/versioned-docs -config gapsdocs/config.yaml -content gapsdocs/content -out site -base-url "/versioned-docs/branch/pr-${{ github.event.number }}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: site
+          path: site/
+
+  preview:
+    needs: build
+    if: github.event.action != 'closed'
+    uses: wow-look-at-my/actions/.github/workflows/buildhost-preview.yml@master
+    with:
+      artifact-name: site
