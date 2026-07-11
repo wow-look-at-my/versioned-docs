@@ -57,9 +57,12 @@ jobs:
           # PRIVATE_ORG_REPO_READ secret is required; if it is missing or
           # lacks access, fetch-aggregate fails loudly with a clear error.
           GAPS_REMOTE_URL: https://x-access-token:${{ secrets.PRIVATE_ORG_REPO_READ || secrets.GITHUB_TOKEN }}@github.com/PazerOP/claude-docs-gaps.git
+          # The go-toolchain action builds per-platform binaries
+          # (versioned-docs_<os>_<arch>), not the local CLI's single binary.
+          VERSIONED_DOCS_BIN: ${{ github.workspace }}/build/versioned-docs_linux_amd64
         run: |
-          chmod +x build/versioned-docs
-          ./build/versioned-docs -config gapsdocs/config.yaml -content gapsdocs/content -out site -base-url "/versioned-docs/branch/${{ steps.branch.outputs.branch }}"
+          chmod +x "$VERSIONED_DOCS_BIN"
+          "$VERSIONED_DOCS_BIN" -config gapsdocs/config.yaml -content gapsdocs/content -out site -base-url "/versioned-docs/branch/${{ steps.branch.outputs.branch }}"
 
       - name: Publish site to buildhost
         uses: wow-look-at-my/buildhost/.github/actions/buildhost-publish-site@master

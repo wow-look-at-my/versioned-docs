@@ -29,7 +29,9 @@ jobs:
           # See ci.yml: the corpus repo is private and cross-owner, so the
           # org-wide read secret is required; the fetch fails loudly without it.
           GAPS_REMOTE_URL: https://x-access-token:${{ secrets.PRIVATE_ORG_REPO_READ || secrets.GITHUB_TOKEN }}@github.com/PazerOP/claude-docs-gaps.git
-        run: ./build/versioned-docs -config gapsdocs/config.yaml -content gapsdocs/content -out site -base-url "/versioned-docs/branch/pr-${{ github.event.number }}"
+          # The go-toolchain action builds per-platform binaries.
+          VERSIONED_DOCS_BIN: ${{ github.workspace }}/build/versioned-docs_linux_amd64
+        run: '"$VERSIONED_DOCS_BIN" -config gapsdocs/config.yaml -content gapsdocs/content -out site -base-url "/versioned-docs/branch/pr-${{ github.event.number }}"'
 
       - uses: actions/upload-artifact@v4
         with:
