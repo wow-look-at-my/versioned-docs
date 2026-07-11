@@ -22,22 +22,27 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # autorelease off for the same reason as ci.yml: it fails on pushes
+      # that do not change Go sources, and the preview needs the binary,
+      # not a buildhost binary release.
       - uses: wow-look-at-my/go-toolchain@v1
-
-      # See ci.yml: attributes a corpus-fetch failure to the right credential.
-      - name: Report corpus credential source
-        env:
-          HAS_ORG_READ: ${{ secrets.PRIVATE_ORG_REPO_READ != '' }}
-        run: 'echo "PRIVATE_ORG_REPO_READ available to this run: $HAS_ORG_READ (false = GITHUB_TOKEN fallback, which cannot read the private corpus repo)"'
+        with:
+          autorelease: 'false'
 
       - name: Build site from the claude-docs-gaps corpus
         env:
-          # See ci.yml: the corpus repo is private and cross-owner, so the
-          # org-wide read secret is required; the fetch fails loudly without it.
-          GAPS_REMOTE_URL: https://x-access-token:${{ secrets.PRIVATE_ORG_REPO_READ || secrets.GITHUB_TOKEN }}@github.com/PazerOP/claude-docs-gaps.git
+          # See ci.yml: private cross-owner corpus repo. Credential order:
+          # org secret, else the PRIVATE_ORG_REPO_READ env var exported by
+          # the go-toolchain step above, else GITHUB_TOKEN (fails loudly).
+          ORG_READ_SECRET: ${{ secrets.PRIVATE_ORG_REPO_READ }}
+          FALLBACK_TOKEN: ${{ github.token }}
           # The go-toolchain action builds per-platform binaries.
           VERSIONED_DOCS_BIN: ${{ github.workspace }}/build/versioned-docs_linux_amd64
-        run: '"$VERSIONED_DOCS_BIN" -config gapsdocs/config.yaml -content gapsdocs/content -out site -base-url "/versioned-docs/branch/pr-${{ github.event.number }}"'
+        run: |
+          echo "corpus credential: org secret available: ${ORG_READ_SECRET:+true} / org env present: ${PRIVATE_ORG_REPO_READ:+true} (neither = GITHUB_TOKEN fallback, which cannot read the private corpus repo)"
+          TOKEN="${ORG_READ_SECRET:-${PRIVATE_ORG_REPO_READ:-$FALLBACK_TOKEN}}"
+          export GAPS_REMOTE_URL="https://x-access-token:${TOKEN}@github.com/PazerOP/claude-docs-gaps.git"
+          "$VERSIONED_DOCS_BIN" -config gapsdocs/config.yaml -content gapsdocs/content -out site -base-url "/versioned-docs/branch/pr-${{ github.event.number }}"
 
       - uses: actions/upload-artifact@v4
         with:

@@ -10,6 +10,7 @@ on:
 permissions:
   id-token: write
   contents: read
+  actions: read
 
 jobs:
   test:
@@ -17,11 +18,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # autorelease is off: the site is this repo's product, not the binary,
+      # and autorelease fails the whole job with "Release exists" on any
+      # push that does not change Go sources (workflow/docs-only commits).
       - uses: wow-look-at-my/go-toolchain@v1
+        with:
+          autorelease: 'false'
 
       # The deploy job reuses this build instead of running go-toolchain a
-      # second time: go-toolchain auto-publishes binaries to buildhost via
-      # OIDC, and buildhost only accepts OIDC tokens from allowlisted event
+      # second time: go-toolchain would re-attempt its buildhost publishing
+      # there, and buildhost only accepts OIDC tokens from allowlisted event
       # types — keeping go-toolchain out of the deploy job keeps dispatched
       # deploys from dying inside the toolchain step.
       - uses: actions/upload-artifact@v4
@@ -50,26 +56,23 @@ jobs:
         id: branch
         run: echo "branch=${GITHUB_REF_NAME//\//-}" >> "$GITHUB_OUTPUT"
 
-      # Diagnostic: says which credential the corpus fetch uses, so a
-      # "Repository not found" failure below is attributable (org secret
-      # missing for this repo vs. token lacking access to the private
-      # cross-owner corpus repo).
-      - name: Report corpus credential source
-        env:
-          HAS_ORG_READ: ${{ secrets.PRIVATE_ORG_REPO_READ != '' }}
-        run: 'echo "PRIVATE_ORG_REPO_READ available to this run: $HAS_ORG_READ (false = GITHUB_TOKEN fallback, which cannot read the private corpus repo)"'
-
       - name: Build site from the claude-docs-gaps corpus
         env:
           # claude-docs-gaps is PRIVATE and owned by PazerOP (a different
-          # owner), so this repo's GITHUB_TOKEN cannot read it. The org-wide
-          # PRIVATE_ORG_REPO_READ secret is required; if it is missing or
-          # lacks access, fetch-aggregate fails loudly with a clear error.
-          GAPS_REMOTE_URL: https://x-access-token:${{ secrets.PRIVATE_ORG_REPO_READ || secrets.GITHUB_TOKEN }}@github.com/PazerOP/claude-docs-gaps.git
+          # owner), so this repo's GITHUB_TOKEN cannot read it. Credential
+          # order: the org read secret if this repo is granted access to it,
+          # else the PRIVATE_ORG_REPO_READ env var (exported by go-toolchain
+          # in jobs that run it — not this one), else GITHUB_TOKEN, in which
+          # case fetch-aggregate fails loudly with a clear error.
+          ORG_READ_SECRET: ${{ secrets.PRIVATE_ORG_REPO_READ }}
+          FALLBACK_TOKEN: ${{ github.token }}
           # The go-toolchain action builds per-platform binaries
           # (versioned-docs_<os>_<arch>), not the local CLI's single binary.
           VERSIONED_DOCS_BIN: ${{ github.workspace }}/build/versioned-docs_linux_amd64
         run: |
+          echo "corpus credential: org secret available: ${ORG_READ_SECRET:+true} / org env present: ${PRIVATE_ORG_REPO_READ:+true} (neither = GITHUB_TOKEN fallback, which cannot read the private corpus repo)"
+          TOKEN="${ORG_READ_SECRET:-${PRIVATE_ORG_REPO_READ:-$FALLBACK_TOKEN}}"
+          export GAPS_REMOTE_URL="https://x-access-token:${TOKEN}@github.com/PazerOP/claude-docs-gaps.git"
           chmod +x "$VERSIONED_DOCS_BIN"
           "$VERSIONED_DOCS_BIN" -config gapsdocs/config.yaml -content gapsdocs/content -out site -base-url "/versioned-docs/branch/${{ steps.branch.outputs.branch }}"
 
