@@ -2,10 +2,6 @@ name: CI
 
 on:
   push:
-  # workflow_dispatch serves two purposes: manual runs, and the scheduled
-  # refresh (refresh.yml re-dispatches this workflow because buildhost
-  # rejects OIDC tokens minted in schedule-event runs).
-  workflow_dispatch:
 
 permissions:
   id-token: write
@@ -18,100 +14,125 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # autorelease is off: the site is this repo's product, not the binary,
-      # and autorelease fails the whole job with "Release exists" on any
-      # push that does not change Go sources (workflow/docs-only commits).
+      # autorelease stays off: it hard-fails any push that leaves the Go
+      # build unchanged ("Release exists"), which would turn doc- and
+      # workflow-only master pushes red. The publish job below owns the
+      # buildhost release instead and skips those pushes green.
       - uses: wow-look-at-my/go-toolchain@v1
         with:
           autorelease: 'false'
 
-      # The deploy job reuses this build instead of running go-toolchain a
-      # second time: go-toolchain would re-attempt its buildhost publishing
-      # there, and buildhost only accepts OIDC tokens from allowlisted event
-      # types — keeping go-toolchain out of the deploy job keeps dispatched
-      # deploys from dying inside the toolchain step.
+      # The publish job reuses this build instead of running go-toolchain a
+      # second time.
       - uses: actions/upload-artifact@v4
         with:
           name: versioned-docs-build
           path: build/
 
-  deploy:
+  # Publish the tool binary to the buildhost project `versioned-docs` so
+  # consumer repos' CI can download it, e.g.:
+  #   https://dl.pazer.build/versioned-docs?branch=master&os=linux&arch=amd64
+  # Auth is GitHub OIDC (no static secret); the project is already
+  # provisioned on the server and tied to this repository.
+  publish:
     needs: test
-    if: >-
-      (github.event_name == 'push' && github.ref == 'refs/heads/master') ||
-      github.event_name == 'workflow_dispatch'
+    if: github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-
       - uses: actions/download-artifact@v4
         with:
           name: versioned-docs-build
           path: build
 
-      # Site branch = git ref with slashes flattened (matches how other org
-      # repos publish, e.g. cc-marketplace). master deploys to
-      # sites.pazer.build/versioned-docs/branch/master/.
-      - name: Compute site branch name
-        id: branch
-        run: echo "branch=${GITHUB_REF_NAME//\//-}" >> "$GITHUB_OUTPUT"
-
-      # The corpus repo (PazerOP/claude-docs-gaps) is PRIVATE and cross-owner,
-      # so this repo's GITHUB_TOKEN cannot read it, and no org secret readable
-      # from here can either. Instead of failing every master push red, the
-      # deploy probes first and skips green — with a loud warning — until the
-      # optional CLAUDE_DOCS_GAPS_TOKEN repo secret exists (or the corpus repo
-      # goes public). It likewise skips when the site profile is absent.
-      - name: Check the site profile exists
-        id: profile
-        continue-on-error: true
-        run: test -f gapsdocs/config.yaml
-
-      - name: Warn that the deploy is skipped (no site profile)
-        if: steps.profile.outcome == 'failure'
-        run: |
-          MSG="site profile gapsdocs/config.yaml missing — site build skipped"
-          echo "::warning::$MSG"
-          echo "$MSG" >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Probe corpus readability
-        id: probe
-        if: steps.profile.outcome == 'success'
-        continue-on-error: true
-        env:
-          CORPUS_TOKEN: ${{ secrets.CLAUDE_DOCS_GAPS_TOKEN }}
-          FALLBACK_TOKEN: ${{ github.token }}
-        run: |
-          echo "corpus credential: repo secret CLAUDE_DOCS_GAPS_TOKEN available: ${CORPUS_TOKEN:+true} (empty = github.token fallback, which cannot read the private corpus repo)"
-          TOKEN="${CORPUS_TOKEN:-$FALLBACK_TOKEN}"
-          git ls-remote --exit-code "https://x-access-token:${TOKEN}@github.com/PazerOP/claude-docs-gaps.git" HEAD > /dev/null
-
-      - name: Warn that the deploy is skipped (corpus unreadable)
-        if: steps.probe.outcome == 'failure'
-        run: |
-          MSG="No credential available to this run can read PazerOP/claude-docs-gaps — deploy skipped. To enable deploys: create repo secret CLAUDE_DOCS_GAPS_TOKEN containing a token that can read PazerOP/claude-docs-gaps, or make that repo public."
-          echo "::warning::$MSG"
-          echo "$MSG" >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Build site from the claude-docs-gaps corpus
-        if: steps.probe.outcome == 'success'
-        env:
-          CORPUS_TOKEN: ${{ secrets.CLAUDE_DOCS_GAPS_TOKEN }}
-          FALLBACK_TOKEN: ${{ github.token }}
-          # The go-toolchain action builds per-platform binaries
-          # (versioned-docs_<os>_<arch>), not the local CLI's single binary.
-          VERSIONED_DOCS_BIN: ${{ github.workspace }}/build/versioned-docs_linux_amd64
-        run: |
-          TOKEN="${CORPUS_TOKEN:-$FALLBACK_TOKEN}"
-          export GAPS_REMOTE_URL="https://x-access-token:${TOKEN}@github.com/PazerOP/claude-docs-gaps.git"
-          chmod +x "$VERSIONED_DOCS_BIN"
-          "$VERSIONED_DOCS_BIN" -config gapsdocs/config.yaml -content gapsdocs/content -out site -base-url "/versioned-docs/branch/${{ steps.branch.outputs.branch }}"
-
-      - name: Publish site to buildhost
-        if: steps.probe.outcome == 'success'
-        uses: wow-look-at-my/buildhost/.github/actions/buildhost-publish-site@master
+      - name: Publish binary to buildhost
+        uses: wow-look-at-my/actions@typescript#latest
         with:
-          server: https://pazer.build
-          project: versioned-docs
-          branch: ${{ steps.branch.outputs.branch }}
-          source_dir: site
+          script: |
+            // Only pushes that can change the built binary warrant a new
+            // buildhost release: Go sources, module files, and the embedded
+            // templates/ + static/ assets (see assets.go). Anything else
+            // (docs, workflows) skips green with a notice.
+            const affectsBinary = (f: string): boolean =>
+              /\.go$/.test(f) || /^go\.(mod|sum)$/.test(f) || /^(templates|static)\//.test(f);
+
+            const before = String(context.payload.before ?? "");
+            if (/^[0-9a-f]{40}$/.test(before) && !/^0{40}$/.test(before)) {
+              try {
+                const { data: cmp } = await octokit.rest.repos.compareCommitsWithBasehead({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  basehead: `${before}...${context.sha}`,
+                });
+                const files: Array<{ filename: string; previous_filename?: string }> = cmp.files ?? [];
+                const hits = files.filter(
+                  (f) => affectsBinary(f.filename) || (f.previous_filename !== undefined && affectsBinary(f.previous_filename)),
+                );
+                // The compare API caps the file list at 300 entries; a full
+                // list may be truncated, so only trust an all-clear below it.
+                if (hits.length === 0 && files.length < 300) {
+                  core.notice(`buildhost publish skipped: no binary-affecting changes in ${before.slice(0, 7)}..${context.sha.slice(0, 7)}`);
+                  return "skipped";
+                }
+              } catch (e) {
+                core.warning(`compare failed (${e instanceof Error ? e.message : String(e)}); publishing anyway`);
+              }
+            }
+
+            // linux/amd64 is the consumable contract and must exist;
+            // linux/arm64 rides along when the toolchain built it. amd64
+            // uploads LAST so that even if the server were to version the
+            // uploads separately, the newest release carries it.
+            const bins: Array<{ file: string; os: string; arch: string }> = [];
+            if (fs.existsSync("build/versioned-docs_linux_arm64")) {
+              bins.push({ file: "build/versioned-docs_linux_arm64", os: "linux", arch: "arm64" });
+            }
+            if (!fs.existsSync("build/versioned-docs_linux_amd64")) {
+              core.setFailed(`build/versioned-docs_linux_amd64 missing from the build artifact (found: ${fs.readdirSync("build").join(", ")})`);
+              return;
+            }
+            bins.push({ file: "build/versioned-docs_linux_amd64", os: "linux", arch: "amd64" });
+
+            const server = "https://pazer.build";
+            const api = `${server}/api/v1/projects/versioned-docs/releases`;
+            const token = await core.getIDToken(server);
+
+            for (const b of bins) {
+              const res = await fetch(`${api}/latest/artifacts/${b.os}/${b.arch}`, {
+                method: "PUT",
+                headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/octet-stream" },
+                body: new Uint8Array(fs.readFileSync(b.file)),
+              });
+              const body = await res.text();
+              if (!res.ok) {
+                core.setFailed(`uploading ${b.os}/${b.arch} failed: HTTP ${res.status}: ${body}`);
+                return;
+              }
+              core.info(`uploaded ${b.os}/${b.arch}: ${body}`);
+            }
+
+            // Find the release the uploads landed on (the server fills
+            // git_commit from the OIDC claims) and make sure it ends up
+            // published — releases list newest-first on a public endpoint.
+            const listRes = await fetch(api);
+            if (!listRes.ok) {
+              core.setFailed(`listing releases failed: HTTP ${listRes.status}: ${await listRes.text()}`);
+              return;
+            }
+            const releases = (await listRes.json()) as Array<{ version: string; git_commit: string; published: boolean }>;
+            const mine = releases.find((r) => r.git_commit === context.sha);
+            if (mine === undefined) {
+              core.setFailed(`no buildhost release carries git_commit ${context.sha}; the uploads may have landed on the wrong release`);
+              return;
+            }
+            if (!mine.published) {
+              const pub = await fetch(`${api}/${mine.version}/publish`, {
+                method: "POST",
+                headers: { Authorization: `Bearer ${token}` },
+              });
+              if (!pub.ok) {
+                core.setFailed(`publishing release v${mine.version} failed: HTTP ${pub.status}: ${await pub.text()}`);
+                return;
+              }
+            }
+            core.notice(`buildhost release v${mine.version} published: https://dl.pazer.build/versioned-docs?branch=master&os=linux&arch=amd64`);
+            return mine.version;

@@ -64,9 +64,6 @@ content newer than T are build errors. Implementation: `terminate.go`.
   ascending-semver version list from the remote's version branches.
 - `templates/` + `static/` — site assets, embedded via `assets.go` as
   fallbacks; a `-templates` dir overrides them.
-- `gapsdocs/` — profile for the claude-docs-gaps corpus (`config.yaml` when
-  present — CI tolerates its absence by skipping site builds; `content/` and
-  `versions.txt` are generated and gitignored).
 - `example/` — tiny profile used by the link-check test.
 
 ## Config Format (config.yaml)
@@ -82,21 +79,22 @@ terminated: {}                          # optional tombstones
 
 Both commands run via `sh -c` from the config file's directory.
 
-## CI / deploy
+## CI / publish
 
-`.github/workflows/ci.yml`: `test` (go-toolchain, `autorelease: 'false'` —
-autorelease hard-fails pushes that leave Go sources unchanged) on every push;
-`deploy` (master pushes + any `workflow_dispatch`) rebuilds the site from the
-real corpus and publishes to buildhost. The corpus repo is private and
-cross-owner, so the deploy probes first and skips green with a loud warning
-(annotation + step summary) when `gapsdocs/config.yaml` is absent or the
-corpus is unreadable; real deploys start once the repo secret
-`CLAUDE_DOCS_GAPS_TOKEN` (a token that can read `PazerOP/claude-docs-gaps`)
-exists or the corpus repo goes public. `refresh.yml` is a cron
-that only re-dispatches ci.yml, because buildhost rejects OIDC from
-`schedule`-event runs. `preview.yml` deploys PR previews via the org's
-reusable buildhost-preview workflow, downgrading to a warning (not a failure)
-when the profile is missing or the corpus is unreadable — same probe and
-secret — so the `all-builds` gate stays meaningful. Keep
-the `test` job's name — the org's `all-builds` merge gate aggregates
-automatically.
+This repo is the generic tool only — no site is built or deployed here.
+Consumer repos (reference: `PazerOP/claude-docs-gaps`) run the tool from
+their own CI against their own corpus, with their own credentials.
+
+`.github/workflows/ci.yml` is the only workflow. `test` (go-toolchain,
+`autorelease: 'false'` — autorelease hard-fails pushes that leave the Go
+build unchanged) runs on every push and uploads `build/` as an artifact.
+`publish` (master pushes only) downloads it and publishes the `linux/amd64`
+(+`linux/arm64` when built) binary to the buildhost project `versioned-docs`
+via GitHub-OIDC `PUT`s in a `wow-look-at-my/actions@typescript#latest` step;
+consumers download
+`https://dl.pazer.build/versioned-docs?branch=master&os=linux&arch=amd64`.
+The publish step first diffs the push range and skips green when nothing
+that reaches the binary changed (Go sources, `go.mod`/`go.sum`, or the
+embedded `templates/` + `static/` assets), so doc-only master pushes stay
+green without release spam. Keep the `test` job's name — the org's
+`all-builds` merge gate aggregates automatically.
