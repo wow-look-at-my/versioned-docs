@@ -1,8 +1,8 @@
 package main
 
 import (
+	"github.com/stretchr/testify/assert"
 	"testing"
-	"github.com/wow-look-at-my/testify/assert"
 )
 
 func TestResolveVersionMap(t *testing.T) {
@@ -23,14 +23,14 @@ func TestResolveVersionMap(t *testing.T) {
 	got := ResolveVersionMap(software, documented)
 
 	expected := map[string]string{
-		"1":	"2",	// no prior docs, falls forward to 2
-		"2":	"2",	// authored
-		"3":	"3",	// authored
-		"4":	"3",	// inherits from 3
-		"5":	"5",	// authored
-		"6":	"5",	// inherits from 5
-		"7":	"5",	// inherits from 5
-		"8":	"8",	// authored
+		"1": "2", // no prior docs, falls forward to 2
+		"2": "2", // authored
+		"3": "3", // authored
+		"4": "3", // inherits from 3
+		"5": "5", // authored
+		"6": "5", // inherits from 5
+		"7": "5", // inherits from 5
+		"8": "8", // authored
 	}
 
 	for v, want := range expected {
@@ -68,46 +68,46 @@ func TestResolvePageVersion(t *testing.T) {
 	software := []string{"v1", "v2", "v3", "v4"}
 
 	tests := []struct {
-		name		string
-		softwareVersion	string
-		pageVersions	map[string]bool	// versions that have this page
-		want		string
+		name            string
+		softwareVersion string
+		pageVersions    map[string]bool // versions that have this page
+		want            string
 	}{
 		{
-			name:			"page exists in same version",
-			softwareVersion:	"v2",
-			pageVersions:		map[string]bool{"v2": true},
-			want:			"v2",
+			name:            "page exists in same version",
+			softwareVersion: "v2",
+			pageVersions:    map[string]bool{"v2": true},
+			want:            "v2",
 		},
 		{
-			name:			"page inherited from older version",
-			softwareVersion:	"v3",
-			pageVersions:		map[string]bool{"v2": true},
-			want:			"v2",
+			name:            "page inherited from older version",
+			softwareVersion: "v3",
+			pageVersions:    map[string]bool{"v2": true},
+			want:            "v2",
 		},
 		{
-			name:			"page inherited from newer version (no older exists)",
-			softwareVersion:	"v1",
-			pageVersions:		map[string]bool{"v2": true},
-			want:			"v2",
+			name:            "page inherited from newer version (no older exists)",
+			softwareVersion: "v1",
+			pageVersions:    map[string]bool{"v2": true},
+			want:            "v2",
 		},
 		{
-			name:			"page exists in multiple versions, picks nearest older",
-			softwareVersion:	"v3",
-			pageVersions:		map[string]bool{"v1": true, "v2": true, "v4": true},
-			want:			"v2",
+			name:            "page exists in multiple versions, picks nearest older",
+			softwareVersion: "v3",
+			pageVersions:    map[string]bool{"v1": true, "v2": true, "v4": true},
+			want:            "v2",
 		},
 		{
-			name:			"page only in newest version",
-			softwareVersion:	"v2",
-			pageVersions:		map[string]bool{"v4": true},
-			want:			"v4",
+			name:            "page only in newest version",
+			softwareVersion: "v2",
+			pageVersions:    map[string]bool{"v4": true},
+			want:            "v4",
 		},
 		{
-			name:			"no version has page",
-			softwareVersion:	"v2",
-			pageVersions:		map[string]bool{},
-			want:			"",
+			name:            "no version has page",
+			softwareVersion: "v2",
+			pageVersions:    map[string]bool{},
+			want:            "",
 		},
 	}
 

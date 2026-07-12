@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{.Project}} — {{.Title}}</title>
+<link rel="stylesheet" href="{{.BaseURL}}/static/style.css">
+</head>
+<body class="page-view doc-view">
+<div class="layout">
+  <nav>
+    <a class="home-link" href="{{.BaseURL}}/index.html">← All documents</a>
+    <div class="version-select doc-picker">
+      <h2>Document version</h2>
+      <select onchange="if(this.value)window.location.href=this.value">
+        {{range $i, $v := .Chain -}}
+        <option value="{{if eq $i 0}}{{$.BaseURL}}/docs/{{$.Path}}.html{{else}}{{$.BaseURL}}/{{$v}}/{{$.Path}}.html{{end}}" {{if eq $i 0}}selected{{end}}>
+          {{$v}}{{if eq $i 0}} (newest){{end}}
+        </option>
+        {{end -}}
+      </select>
+    </div>
+    <h2>Documents</h2>
+    {{range .Docs -}}
+    <a href="{{$.BaseURL}}/docs/{{.Path}}.html"
+       {{if eq .Path $.Path}}class="active"{{end}}>
+      {{.Title}}
+    </a>
+    {{end -}}
+    {{if .RemovedDocs -}}
+    <h2>Removed</h2>
+    {{range .RemovedDocs -}}
+    <a href="{{$.BaseURL}}/docs/{{.Path}}.html"
+       {{if eq .Path $.Path}}class="active"{{end}}>
+      {{.Title}}
+    </a>
+    {{end -}}
+    {{end -}}
+    <div class="nav-links">
+      <a href="{{.BaseURL}}/versions.html">Version history</a>
+    </div>
+  </nav>
+  <main>
+    {{if .IsRemoved -}}
+    <div class="removed-banner">
+      🪦 This document last applies to version <strong>{{.TerminatedAt}}</strong>.
+      It was removed in later versions and does not apply to the current
+      version ({{.CurrentVersion}}).
+    </div>
+    {{end -}}
+    <div class="doc-meta">
+      Newest revision — authored for version <strong>{{.NewestVersion}}</strong>{{if and (ne .NewestVersion .CurrentVersion) (not .IsRemoved)}} (current version: {{.CurrentVersion}}){{end}}
+    </div>
+    {{.HTML}}
+    <div class="llm-link">
+      🤖 <a href="{{.BaseURL}}/llms-full.md">LLM-friendly bundle</a>
+      · <a href="{{.BaseURL}}/llms.txt">llms.txt</a>
+    </div>
+  </main>
+</div>
+<script src="{{.BaseURL}}/static/script.js"></script>
+</body>
+</html>

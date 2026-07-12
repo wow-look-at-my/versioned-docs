@@ -1,12 +1,12 @@
 package main
 
 import (
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"os"
 	"path/filepath"
 	"runtime"
 	"testing"
-	"github.com/wow-look-at-my/testify/assert"
-	"github.com/wow-look-at-my/testify/require"
 )
 
 func TestDiscoverDocumentedVersions(t *testing.T) {
@@ -237,8 +237,8 @@ func TestRunContentCommand(t *testing.T) {
 
 	tmp := t.TempDir()
 	cfg := &Config{
-		ContentCommand:	"mkdir -p content/v1 && echo hello > content/v1/index.md",
-		ConfigDir:	tmp,
+		ContentCommand: "mkdir -p content/v1 && echo hello > content/v1/index.md",
+		ConfigDir:      tmp,
 	}
 
 	require.NoError(t, RunContentCommand(cfg))
@@ -263,8 +263,8 @@ func TestRunContentCommand_Failure(t *testing.T) {
 	}
 
 	cfg := &Config{
-		ContentCommand:	"exit 1",
-		ConfigDir:	t.TempDir(),
+		ContentCommand: "exit 1",
+		ConfigDir:      t.TempDir(),
 	}
 
 	err := RunContentCommand(cfg)

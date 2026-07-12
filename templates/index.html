@@ -9,56 +9,53 @@
 <body class="index-view">
 <div class="container">
   <h1>{{.Project}}</h1>
-  <p class="subtitle">Versioned documentation matrix</p>
+  <p class="subtitle">Documentation — current version {{.CurrentVersion}}</p>
 
-  <div class="legend">
-    <div class="legend-item"><div class="legend-box legend-authored"></div> Authored</div>
-    <div class="legend-item"><div class="legend-box legend-inherited"></div> Inherited</div>
-  </div>
+  <p class="index-links">
+    <a href="{{.BaseURL}}/versions.html">Version history</a>
+    · <a href="{{.BaseURL}}/llms.txt">llms.txt</a>
+    · <a href="{{.BaseURL}}/llms-full.md">llms-full.md</a>
+    · <a href="{{.Repo}}">source</a>
+  </p>
 
-  <table>
+  <h2>Documents</h2>
+  <table class="doc-list">
     <thead>
-      <tr>
-        <th>Page</th>
-        {{range .Versions -}}
-        <th>{{.Software}}</th>
-        {{end -}}
-      </tr>
+      <tr><th>Document</th><th>Newest version</th><th>Versions</th></tr>
     </thead>
     <tbody>
-    {{range $page := .AllPages -}}
+    {{range .Docs -}}
     <tr>
-      <td class="page-name">{{$page}}</td>
-      {{range $v := $.Versions -}}
-      {{$isAuthored := index (index $.PageMatrix $page) $v.Software -}}
-      {{if eq $isAuthored true -}}
-      <td class="cell-authored"><a href="{{$.BaseURL}}/{{$v.Software}}/{{$page}}.html">✓</a></td>
-      {{else if eq $isAuthored false -}}
-      <td class="cell-inherited"><a href="{{$.BaseURL}}/{{$v.Software}}/{{$page}}.html">↓</a></td>
-      {{else -}}
-      <td class="cell-empty">—</td>
-      {{end -}}
-      {{end -}}
+      <td class="page-name"><a href="{{$.BaseURL}}/docs/{{.Path}}.html">{{.Title}}</a></td>
+      <td>{{.NewestVersion}}</td>
+      <td>{{.NumVersions}}</td>
     </tr>
     {{end -}}
     </tbody>
   </table>
 
-  <h2>Version Sources</h2>
-  <table>
-    <thead><tr><th>Version</th><th>Docs from</th></tr></thead>
+  {{if .RemovedDocs -}}
+  <h2>Removed documents</h2>
+  <p class="removed-note">These documents no longer apply to the current version.</p>
+  <table class="doc-list removed-section">
+    <thead>
+      <tr><th>Document</th><th>Last applies to</th><th>Versions</th></tr>
+    </thead>
     <tbody>
-    {{range .Versions -}}
+    {{range .RemovedDocs -}}
     <tr>
-      <td><a href="{{$.BaseURL}}/{{.Software}}/index.html">{{.Software}}</a></td>
-      <td>{{if .IsAuthored}}authored{{else}}{{.Docs}}{{end}}</td>
+      <td class="page-name"><a href="{{$.BaseURL}}/docs/{{.Path}}.html">{{.Title}}</a></td>
+      <td>{{.TerminatedAt}}</td>
+      <td>{{.NumVersions}}</td>
     </tr>
     {{end -}}
     </tbody>
   </table>
+  {{end -}}
 
   <div class="llm-section">
     🤖 For LLM consumption: <a href="{{.BaseURL}}/llms.txt">llms.txt</a>
+    · <a href="{{.BaseURL}}/llms-full.md">llms-full.md</a>
   </div>
 </div>
 </body>

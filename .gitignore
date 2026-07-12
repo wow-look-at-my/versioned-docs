@@ -3,3 +3,8 @@ versioned-docs/
 example/site/
 example/site-test/
 coverage.out
+
+# Fetched corpus + generated site (never vendored)
+gapsdocs/content/
+gapsdocs/versions.txt
+site/

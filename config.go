@@ -17,6 +17,13 @@ type Config struct {
 	VersionCommand string `yaml:"version_command"`
 	ContentCommand string `yaml:"content_command"`
 
+	// Terminated maps a doc path (relative to a version's content directory,
+	// e.g. "auto-mode-override.md") to the LAST software version it applies
+	// to. The doc stays visible up to and including that version and is
+	// hidden from all later versions. See terminate.go for the exact
+	// boundary semantics and validation rules.
+	Terminated map[string]string `yaml:"terminated"`
+
 	// ConfigDir is the directory containing the config file.
 	// Used as working directory for version_command and content_command.
 	ConfigDir string `yaml:"-"`

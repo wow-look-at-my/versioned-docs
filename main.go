@@ -7,6 +7,17 @@ import (
 )
 
 func main() {
+	// Subcommand dispatch: `versioned-docs fetch-aggregate ...` adapts a
+	// docs-aggregate corpus into this tool's input layout (see fetch.go).
+	// Without a subcommand the binary runs the site generator.
+	if len(os.Args) > 1 && os.Args[1] == "fetch-aggregate" {
+		if err := runFetchAggregate(os.Args[2:]); err != nil {
+			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
 	configPath := flag.String("config", "config.yaml", "path to config.yaml")
 	outputDir := flag.String("out", "site", "output directory")
 	contentDir := flag.String("content", "content", "content directory with versioned docs")

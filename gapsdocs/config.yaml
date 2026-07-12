@@ -1,0 +1,29 @@
+# Profile for building the claude-docs-gaps documentation site.
+#
+# Input: the docs-aggregate branch of PazerOP/claude-docs-gaps, a tree of
+# <version>/docs/<file>.md maintained by that repo's aggregate-docs tool.
+#
+# content_command runs BEFORE version_command: fetch-aggregate reshapes the
+# corpus into content/<version>/<file>.md and writes versions.txt (all semver
+# version branches of the corpus repo, ascending), which version_command then
+# reads.
+#
+# Environment overrides:
+#   GAPS_REMOTE_URL     git URL or local path of the corpus repo. In CI this
+#                       carries a token (the repo is private); locally it can
+#                       point at a clone, e.g. /home/user/claude-docs-gaps.
+#   VERSIONED_DOCS_BIN  path to the versioned-docs binary (default: the
+#                       go-toolchain build output relative to this directory).
+
+project: claude-docs-gaps
+repo: https://github.com/PazerOP/claude-docs-gaps
+
+content_command: '"${VERSIONED_DOCS_BIN:-../build/versioned-docs}" fetch-aggregate -remote "${GAPS_REMOTE_URL:-https://github.com/PazerOP/claude-docs-gaps}" -content content -versions-out versions.txt'
+version_command: "cat versions.txt"
+
+# Tombstones: <doc path> -> last software version the doc applies to.
+# The doc stays visible up to and including that version, is hidden from all
+# later versions, and drops out of the default listing once the current
+# version passes it. The version must exist in the version list and no
+# authored content may be newer than it (build error otherwise).
+terminated: {}

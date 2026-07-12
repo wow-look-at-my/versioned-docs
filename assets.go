@@ -13,3 +13,9 @@ var defaultPageTemplateBytes []byte
 
 //go:embed templates/index.html
 var defaultIndexTemplateBytes []byte
+
+//go:embed templates/doc.html
+var defaultDocTemplateBytes []byte
+
+//go:embed templates/versions.html
+var defaultVersionsTemplateBytes []byte
