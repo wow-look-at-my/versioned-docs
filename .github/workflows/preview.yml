@@ -31,36 +31,52 @@ jobs:
         with:
           autorelease: 'false'
 
-      # The corpus repo is PRIVATE and cross-owner. Unlike the deploy job
-      # (which must fail loudly), an unreadable corpus only downgrades the
-      # preview to a warning — otherwise the required all-builds gate stays
-      # permanently red on every PR until the credential exists.
-      # Credential order: org secret, else the PRIVATE_ORG_REPO_READ env var
-      # exported by the go-toolchain step above, else GITHUB_TOKEN.
+      # The corpus repo (PazerOP/claude-docs-gaps) is PRIVATE and cross-owner,
+      # and no credential this repo holds by default can read it. A missing
+      # site profile or an unreadable corpus only downgrades the preview to a
+      # warning — otherwise the required all-builds gate stays permanently red
+      # on every PR until the credential exists. Credential: the optional
+      # CLAUDE_DOCS_GAPS_TOKEN repo secret if set, else GITHUB_TOKEN.
+      - name: Check the site profile exists
+        id: profile
+        continue-on-error: true
+        run: test -f gapsdocs/config.yaml
+
+      - name: Warn that the preview is skipped (no site profile)
+        if: steps.profile.outcome == 'failure'
+        run: |
+          MSG="site profile gapsdocs/config.yaml missing — PR preview skipped"
+          echo "::warning::$MSG"
+          echo "$MSG" >> "$GITHUB_STEP_SUMMARY"
+
       - name: Probe corpus readability
         id: probe
+        if: steps.profile.outcome == 'success'
         continue-on-error: true
         env:
-          ORG_READ_SECRET: ${{ secrets.PRIVATE_ORG_REPO_READ }}
+          CORPUS_TOKEN: ${{ secrets.CLAUDE_DOCS_GAPS_TOKEN }}
           FALLBACK_TOKEN: ${{ github.token }}
         run: |
-          echo "corpus credential: org secret available: ${ORG_READ_SECRET:+true} / org env present: ${PRIVATE_ORG_REPO_READ:+true} (neither = GITHUB_TOKEN fallback)"
-          TOKEN="${ORG_READ_SECRET:-${PRIVATE_ORG_REPO_READ:-$FALLBACK_TOKEN}}"
+          echo "corpus credential: repo secret CLAUDE_DOCS_GAPS_TOKEN available: ${CORPUS_TOKEN:+true} (empty = github.token fallback)"
+          TOKEN="${CORPUS_TOKEN:-$FALLBACK_TOKEN}"
           git ls-remote --exit-code "https://x-access-token:${TOKEN}@github.com/PazerOP/claude-docs-gaps.git" HEAD > /dev/null
 
-      - name: Warn that the preview is skipped
+      - name: Warn that the preview is skipped (corpus unreadable)
         if: steps.probe.outcome == 'failure'
-        run: echo "::warning::No credential available to this run can read PazerOP/claude-docs-gaps (grant the PRIVATE_ORG_REPO_READ secret to this repo, with a token that can read the corpus repo). Skipping the PR preview."
+        run: |
+          MSG="No credential available to this run can read PazerOP/claude-docs-gaps — PR preview skipped. To enable: create repo secret CLAUDE_DOCS_GAPS_TOKEN containing a token that can read PazerOP/claude-docs-gaps, or make that repo public."
+          echo "::warning::$MSG"
+          echo "$MSG" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Build site from the claude-docs-gaps corpus
         if: steps.probe.outcome == 'success'
         env:
-          ORG_READ_SECRET: ${{ secrets.PRIVATE_ORG_REPO_READ }}
+          CORPUS_TOKEN: ${{ secrets.CLAUDE_DOCS_GAPS_TOKEN }}
           FALLBACK_TOKEN: ${{ github.token }}
           # The go-toolchain action builds per-platform binaries.
           VERSIONED_DOCS_BIN: ${{ github.workspace }}/build/versioned-docs_linux_amd64
         run: |
-          TOKEN="${ORG_READ_SECRET:-${PRIVATE_ORG_REPO_READ:-$FALLBACK_TOKEN}}"
+          TOKEN="${CORPUS_TOKEN:-$FALLBACK_TOKEN}"
           export GAPS_REMOTE_URL="https://x-access-token:${TOKEN}@github.com/PazerOP/claude-docs-gaps.git"
           "$VERSIONED_DOCS_BIN" -config gapsdocs/config.yaml -content gapsdocs/content -out site -base-url "/versioned-docs/branch/pr-${{ github.event.number }}"
 

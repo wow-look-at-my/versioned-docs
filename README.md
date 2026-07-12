@@ -146,18 +146,24 @@ documented versions). `gapsdocs/content/`, `gapsdocs/versions.txt`, and
   `workflow_dispatch`) downloads that artifact, fetches the corpus, builds
   the site, and publishes it to buildhost under `branch/<ref-name>` via
   `buildhost-publish-site` (OIDC). The corpus repo is private and cross-owner
-  — the default token cannot read it, so the `PRIVATE_ORG_REPO_READ` secret
-  must be granted to this repo with a token that can read
-  `PazerOP/claude-docs-gaps`; the deploy fails loudly until it is.
+  — the default token cannot read it — so the deploy probes first and skips
+  green (a `::warning::` annotation plus a step-summary note, never a red
+  job) when the site profile `gapsdocs/config.yaml` is absent or no
+  available credential can read the corpus. To enable real deploys, create
+  the repo secret `CLAUDE_DOCS_GAPS_TOKEN` containing a token that can read
+  `PazerOP/claude-docs-gaps`, or make that repo public; the corpus-fetch
+  behavior once enabled is unchanged.
 - **refresh.yml** — cron every 3 days that only re-dispatches ci.yml on
   master. The indirection is load-bearing: buildhost rejects OIDC tokens from
   `schedule`-event runs, so a direct scheduled deploy would 401 (this exact
   failure broke the upstream claude-docs-gaps aggregate cron).
 - **preview.yml** — builds the site for each PR and delegates to the org's
   reusable `buildhost-preview` workflow (deploys to `branch/pr-<n>` and posts
-  a sticky comment with the URL). Unlike the deploy job, an unreadable corpus
-  only downgrades the preview to a workflow warning — otherwise the required
-  `all-builds` gate would stay red on every PR until the credential exists.
+  a sticky comment with the URL). A missing site profile or an unreadable
+  corpus only downgrades the preview to a workflow warning (same probe and
+  optional `CLAUDE_DOCS_GAPS_TOKEN` secret as the deploy job) — otherwise the
+  required `all-builds` gate would stay red on every PR until the credential
+  exists.
 
 ## Development
 

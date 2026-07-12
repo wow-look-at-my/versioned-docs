@@ -64,8 +64,9 @@ content newer than T are build errors. Implementation: `terminate.go`.
   ascending-semver version list from the remote's version branches.
 - `templates/` + `static/` — site assets, embedded via `assets.go` as
   fallbacks; a `-templates` dir overrides them.
-- `gapsdocs/` — profile for the claude-docs-gaps corpus (`config.yaml`;
-  `content/` and `versions.txt` are generated and gitignored).
+- `gapsdocs/` — profile for the claude-docs-gaps corpus (`config.yaml` when
+  present — CI tolerates its absence by skipping site builds; `content/` and
+  `versions.txt` are generated and gitignored).
 - `example/` — tiny profile used by the link-check test.
 
 ## Config Format (config.yaml)
@@ -86,12 +87,16 @@ Both commands run via `sh -c` from the config file's directory.
 `.github/workflows/ci.yml`: `test` (go-toolchain, `autorelease: 'false'` —
 autorelease hard-fails pushes that leave Go sources unchanged) on every push;
 `deploy` (master pushes + any `workflow_dispatch`) rebuilds the site from the
-real corpus and publishes to buildhost — it needs the `PRIVATE_ORG_REPO_READ`
-secret granted to this repo with a token that can read the private
-cross-owner corpus repo, and fails loudly without it. `refresh.yml` is a cron
+real corpus and publishes to buildhost. The corpus repo is private and
+cross-owner, so the deploy probes first and skips green with a loud warning
+(annotation + step summary) when `gapsdocs/config.yaml` is absent or the
+corpus is unreadable; real deploys start once the repo secret
+`CLAUDE_DOCS_GAPS_TOKEN` (a token that can read `PazerOP/claude-docs-gaps`)
+exists or the corpus repo goes public. `refresh.yml` is a cron
 that only re-dispatches ci.yml, because buildhost rejects OIDC from
 `schedule`-event runs. `preview.yml` deploys PR previews via the org's
 reusable buildhost-preview workflow, downgrading to a warning (not a failure)
-when the corpus is unreadable so the `all-builds` gate stays meaningful. Keep
+when the profile is missing or the corpus is unreadable — same probe and
+secret — so the `all-builds` gate stays meaningful. Keep
 the `test` job's name — the org's `all-builds` merge gate aggregates
 automatically.

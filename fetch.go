@@ -110,7 +110,7 @@ func fetchAggregate(opts fetchOptions) error {
 func listSemverVersions(remote string) ([]string, error) {
 	out, err := runGit("", "ls-remote", remote)
 	if err != nil {
-		return nil, fmt.Errorf("fetch-aggregate: listing versions of %s failed: %w\nhint: if the repository is private the remote URL needs a credential that can read it (in CI, secret PRIVATE_ORG_REPO_READ; locally, point -remote at a local clone)", sanitizeCredentials(remote), err)
+		return nil, fmt.Errorf("fetch-aggregate: listing versions of %s failed: %w\nhint: if the repository is private the remote URL needs a credential that can read it (in CI, repo secret CLAUDE_DOCS_GAPS_TOKEN; locally, point -remote at a local clone)", sanitizeCredentials(remote), err)
 	}
 
 	refRe := regexp.MustCompile(`refs/(?:heads|remotes/[^/]+)/(\d+\.\d+\.\d+)$`)
@@ -156,7 +156,7 @@ func extractAggregateTree(opts fetchOptions) ([]string, int, error) {
 		}
 	}
 	if !fetched {
-		return nil, 0, fmt.Errorf("fetch-aggregate: fetching branch %q from %s failed: %w\nhint: if the repository is private the remote URL needs a credential that can read it (in CI, secret PRIVATE_ORG_REPO_READ; locally, run `git fetch origin %s` in the clone first)", opts.Branch, sanitizeCredentials(opts.Remote), fetchErr, opts.Branch)
+		return nil, 0, fmt.Errorf("fetch-aggregate: fetching branch %q from %s failed: %w\nhint: if the repository is private the remote URL needs a credential that can read it (in CI, repo secret CLAUDE_DOCS_GAPS_TOKEN; locally, run `git fetch origin %s` in the clone first)", opts.Branch, sanitizeCredentials(opts.Remote), fetchErr, opts.Branch)
 	}
 
 	tarBytes, err := runGit(tmp, "archive", "--format=tar", "FETCH_HEAD")

@@ -56,27 +56,59 @@ jobs:
         id: branch
         run: echo "branch=${GITHUB_REF_NAME//\//-}" >> "$GITHUB_OUTPUT"
 
-      - name: Build site from the claude-docs-gaps corpus
+      # The corpus repo (PazerOP/claude-docs-gaps) is PRIVATE and cross-owner,
+      # so this repo's GITHUB_TOKEN cannot read it, and no org secret readable
+      # from here can either. Instead of failing every master push red, the
+      # deploy probes first and skips green — with a loud warning — until the
+      # optional CLAUDE_DOCS_GAPS_TOKEN repo secret exists (or the corpus repo
+      # goes public). It likewise skips when the site profile is absent.
+      - name: Check the site profile exists
+        id: profile
+        continue-on-error: true
+        run: test -f gapsdocs/config.yaml
+
+      - name: Warn that the deploy is skipped (no site profile)
+        if: steps.profile.outcome == 'failure'
+        run: |
+          MSG="site profile gapsdocs/config.yaml missing — site build skipped"
+          echo "::warning::$MSG"
+          echo "$MSG" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Probe corpus readability
+        id: probe
+        if: steps.profile.outcome == 'success'
+        continue-on-error: true
         env:
-          # claude-docs-gaps is PRIVATE and owned by PazerOP (a different
-          # owner), so this repo's GITHUB_TOKEN cannot read it. Credential
-          # order: the org read secret if this repo is granted access to it,
-          # else the PRIVATE_ORG_REPO_READ env var (exported by go-toolchain
-          # in jobs that run it — not this one), else GITHUB_TOKEN, in which
-          # case fetch-aggregate fails loudly with a clear error.
-          ORG_READ_SECRET: ${{ secrets.PRIVATE_ORG_REPO_READ }}
+          CORPUS_TOKEN: ${{ secrets.CLAUDE_DOCS_GAPS_TOKEN }}
+          FALLBACK_TOKEN: ${{ github.token }}
+        run: |
+          echo "corpus credential: repo secret CLAUDE_DOCS_GAPS_TOKEN available: ${CORPUS_TOKEN:+true} (empty = github.token fallback, which cannot read the private corpus repo)"
+          TOKEN="${CORPUS_TOKEN:-$FALLBACK_TOKEN}"
+          git ls-remote --exit-code "https://x-access-token:${TOKEN}@github.com/PazerOP/claude-docs-gaps.git" HEAD > /dev/null
+
+      - name: Warn that the deploy is skipped (corpus unreadable)
+        if: steps.probe.outcome == 'failure'
+        run: |
+          MSG="No credential available to this run can read PazerOP/claude-docs-gaps — deploy skipped. To enable deploys: create repo secret CLAUDE_DOCS_GAPS_TOKEN containing a token that can read PazerOP/claude-docs-gaps, or make that repo public."
+          echo "::warning::$MSG"
+          echo "$MSG" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Build site from the claude-docs-gaps corpus
+        if: steps.probe.outcome == 'success'
+        env:
+          CORPUS_TOKEN: ${{ secrets.CLAUDE_DOCS_GAPS_TOKEN }}
           FALLBACK_TOKEN: ${{ github.token }}
           # The go-toolchain action builds per-platform binaries
           # (versioned-docs_<os>_<arch>), not the local CLI's single binary.
           VERSIONED_DOCS_BIN: ${{ github.workspace }}/build/versioned-docs_linux_amd64
         run: |
-          echo "corpus credential: org secret available: ${ORG_READ_SECRET:+true} / org env present: ${PRIVATE_ORG_REPO_READ:+true} (neither = GITHUB_TOKEN fallback, which cannot read the private corpus repo)"
-          TOKEN="${ORG_READ_SECRET:-${PRIVATE_ORG_REPO_READ:-$FALLBACK_TOKEN}}"
+          TOKEN="${CORPUS_TOKEN:-$FALLBACK_TOKEN}"
           export GAPS_REMOTE_URL="https://x-access-token:${TOKEN}@github.com/PazerOP/claude-docs-gaps.git"
           chmod +x "$VERSIONED_DOCS_BIN"
           "$VERSIONED_DOCS_BIN" -config gapsdocs/config.yaml -content gapsdocs/content -out site -base-url "/versioned-docs/branch/${{ steps.branch.outputs.branch }}"
 
       - name: Publish site to buildhost
+        if: steps.probe.outcome == 'success'
         uses: wow-look-at-my/buildhost/.github/actions/buildhost-publish-site@master
         with:
           server: https://pazer.build
