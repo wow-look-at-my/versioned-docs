@@ -149,7 +149,7 @@ documented versions). Never vendor a fetched corpus or a generated site.
 Consumer repos run the tool from their own CI, where their `GITHUB_TOKEN`
 can read their own corpus — no cross-repo credentials anywhere. Either
 download the prebuilt binary that this repo's CI publishes to
-[buildhost](https://pazer.build) on every master push that changes the tool:
+[buildhost](https://pazer.build):
 
 ```sh
 curl -fL --compressed \
@@ -166,16 +166,11 @@ reference consumer.
 
 ## CI (this repo)
 
-- **`test`** — go-toolchain on every push: tests, 80% coverage gate, build;
-  `autorelease` stays disabled because it hard-fails pushes that leave the Go
-  build unchanged (doc/workflow-only commits would go red). Uploads `build/`
-  as an artifact.
-- **`publish`** (master pushes only) — downloads that artifact and publishes
-  the `linux/amd64` (+`linux/arm64` when built) binary to the buildhost
-  project `versioned-docs` via GitHub OIDC (no static secret). It first
-  compares the push range and skips green when nothing that reaches the
-  binary changed (Go sources, `go.mod`/`go.sum`, or the embedded `templates/`
-  + `static/` assets), so doc-only pushes create no release spam.
+`.github/workflows/ci.yml` runs a single `test` job on every push:
+[go-toolchain](https://github.com/wow-look-at-my/go-toolchain) tests,
+enforces the 80% coverage gate, builds, and — via its autorelease — publishes
+the built binaries to the buildhost project `versioned-docs` (GitHub OIDC, no
+static secret).
 
 ## Development
 

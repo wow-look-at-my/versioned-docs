@@ -85,16 +85,12 @@ This repo is the generic tool only — no site is built or deployed here.
 Consumer repos (reference: `PazerOP/claude-docs-gaps`) run the tool from
 their own CI against their own corpus, with their own credentials.
 
-`.github/workflows/ci.yml` is the only workflow. `test` (go-toolchain,
-`autorelease: 'false'` — autorelease hard-fails pushes that leave the Go
-build unchanged) runs on every push and uploads `build/` as an artifact.
-`publish` (master pushes only) downloads it and publishes the `linux/amd64`
-(+`linux/arm64` when built) binary to the buildhost project `versioned-docs`
-via GitHub-OIDC `PUT`s in a `wow-look-at-my/actions@typescript#latest` step;
-consumers download
+`.github/workflows/ci.yml` is the only workflow: a single `test` job runs
+go-toolchain on every push (tests, coverage, build), and go-toolchain's
+autorelease publishes the built binaries to the buildhost project
+`versioned-docs` via GitHub OIDC; consumers download
 `https://dl.pazer.build/versioned-docs?branch=master&os=linux&arch=amd64`.
-The publish step first diffs the push range and skips green when nothing
-that reaches the binary changed (Go sources, `go.mod`/`go.sum`, or the
-embedded `templates/` + `static/` assets), so doc-only master pushes stay
-green without release spam. Keep the `test` job's name — the org's
+Autorelease failing a push whose built binary is unchanged ("Release
+exists") is its design — leave it alone; do not add change-detection or
+skip logic around the publishing. Keep the `test` job's name — the org's
 `all-builds` merge gate aggregates automatically.
