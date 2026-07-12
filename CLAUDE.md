@@ -64,8 +64,6 @@ content newer than T are build errors. Implementation: `terminate.go`.
   ascending-semver version list from the remote's version branches.
 - `templates/` + `static/` — site assets, embedded via `assets.go` as
   fallbacks; a `-templates` dir overrides them.
-- `gapsdocs/` — profile for the claude-docs-gaps corpus (`config.yaml`;
-  `content/` and `versions.txt` are generated and gitignored).
 - `example/` — tiny profile used by the link-check test.
 
 ## Config Format (config.yaml)
@@ -81,17 +79,18 @@ terminated: {}                          # optional tombstones
 
 Both commands run via `sh -c` from the config file's directory.
 
-## CI / deploy
+## CI / publish
 
-`.github/workflows/ci.yml`: `test` (go-toolchain, `autorelease: 'false'` —
-autorelease hard-fails pushes that leave Go sources unchanged) on every push;
-`deploy` (master pushes + any `workflow_dispatch`) rebuilds the site from the
-real corpus and publishes to buildhost — it needs the `PRIVATE_ORG_REPO_READ`
-secret granted to this repo with a token that can read the private
-cross-owner corpus repo, and fails loudly without it. `refresh.yml` is a cron
-that only re-dispatches ci.yml, because buildhost rejects OIDC from
-`schedule`-event runs. `preview.yml` deploys PR previews via the org's
-reusable buildhost-preview workflow, downgrading to a warning (not a failure)
-when the corpus is unreadable so the `all-builds` gate stays meaningful. Keep
-the `test` job's name — the org's `all-builds` merge gate aggregates
-automatically.
+This repo is the generic tool only — no site is built or deployed here.
+Consumer repos (reference: `PazerOP/claude-docs-gaps`) run the tool from
+their own CI against their own corpus, with their own credentials.
+
+`.github/workflows/ci.yml` is the only workflow: a single `test` job runs
+go-toolchain on every push (tests, coverage, build), and go-toolchain's
+autorelease publishes the built binaries to the buildhost project
+`versioned-docs` via GitHub OIDC; consumers download
+`https://dl.pazer.build/versioned-docs?branch=master&os=linux&arch=amd64`.
+Autorelease failing a push whose built binary is unchanged ("Release
+exists") is its design — leave it alone; do not add change-detection or
+skip logic around the publishing. Keep the `test` job's name — the org's
+`all-builds` merge gate aggregates automatically.

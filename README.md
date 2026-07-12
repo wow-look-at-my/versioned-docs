@@ -6,10 +6,14 @@ inherits the nearest documented one. The output is doc-centric: each logical
 document shows its newest authored revision by default, with a per-doc version
 picker for older revisions and a per-version history view.
 
-Its flagship input is the [claude-docs-gaps](https://github.com/PazerOP/claude-docs-gaps)
-corpus (investigation notes about `@anthropic-ai/claude-code`, authored per
-package version), built and published by CI to
-`https://sites.pazer.build/versioned-docs/branch/master/`.
+This repository is the generic **tool only**: the Go generator, the
+`fetch-aggregate` corpus adapter, and their tests. Sites are built by the
+repos that own the content, from their own CI, with their own credentials —
+the reference consumer is
+[claude-docs-gaps](https://github.com/PazerOP/claude-docs-gaps)
+(investigation notes about `@anthropic-ai/claude-code`, authored per package
+version), which builds and deploys its docs site itself using the binary this
+repo publishes.
 
 ## Output model
 
@@ -99,10 +103,12 @@ Run:
 ./build/versioned-docs -config config.yaml -content content/ -out site/ [-base-url /prefix] [-templates templates/]
 ```
 
-## The claude-docs-gaps profile (`gapsdocs/`)
+## The `fetch-aggregate` adapter
 
-`gapsdocs/config.yaml` wires the corpus in via the built-in adapter
-subcommand:
+A built-in subcommand that adapts a docs-aggregate style corpus (a git branch
+laid out as `<version>/docs/<file>.md`, as produced by claude-docs-gaps'
+aggregate-docs tool) into this tool's input layout. Consumers typically run it
+as their config's `content_command`:
 
 ```sh
 versioned-docs fetch-aggregate -remote <url-or-path> [-branch docs-aggregate] [-content content] [-versions-out versions.txt]
@@ -121,43 +127,50 @@ versioned-docs fetch-aggregate -remote <url-or-path> [-branch docs-aggregate] [-
 
 Errors sanitize credentials out of URLs before they can reach logs.
 
-### Building against the real corpus locally
+### Running against a corpus locally
 
 ```sh
-go-toolchain                                       # test + build to build/versioned-docs
-git -C /path/to/claude-docs-gaps fetch origin docs-aggregate
-GAPS_REMOTE_URL=/path/to/claude-docs-gaps \
-  ./build/versioned-docs -config gapsdocs/config.yaml -content gapsdocs/content -out site
+go-toolchain                                  # test + build to build/versioned-docs
+git -C /path/to/corpus-clone fetch origin docs-aggregate
+./build/versioned-docs fetch-aggregate -remote /path/to/corpus-clone
+./build/versioned-docs -config config.yaml -content content -out site
 ```
 
-The clone needs the `docs-aggregate` ref plus whatever `X.Y.Z` branch refs it
-knows (fetch them blobless with
+where `config.yaml` is the consumer's profile (its `version_command` typically
+just reads the `versions.txt` that `fetch-aggregate` wrote). The clone needs
+the `docs-aggregate` ref plus whatever `X.Y.Z` branch refs it knows (fetch
+them blobless with
 `git fetch --filter=blob:none origin '+refs/heads/*:refs/remotes/origin/*'`
 for the full version axis; without them the version axis is just the
-documented versions). `gapsdocs/content/`, `gapsdocs/versions.txt`, and
-`site/` are gitignored — the corpus is never vendored.
+documented versions). Never vendor a fetched corpus or a generated site.
 
-## CI / deploy
+## Consuming from CI
 
-- **ci.yml** — `test` (go-toolchain: tests, 80% coverage gate, build;
-  `autorelease` disabled — the site, not the binary, is this repo's product,
-  and autorelease hard-fails pushes that leave Go sources unchanged) on every
-  push, uploading the build as an artifact; `deploy` (master pushes and every
-  `workflow_dispatch`) downloads that artifact, fetches the corpus, builds
-  the site, and publishes it to buildhost under `branch/<ref-name>` via
-  `buildhost-publish-site` (OIDC). The corpus repo is private and cross-owner
-  — the default token cannot read it, so the `PRIVATE_ORG_REPO_READ` secret
-  must be granted to this repo with a token that can read
-  `PazerOP/claude-docs-gaps`; the deploy fails loudly until it is.
-- **refresh.yml** — cron every 3 days that only re-dispatches ci.yml on
-  master. The indirection is load-bearing: buildhost rejects OIDC tokens from
-  `schedule`-event runs, so a direct scheduled deploy would 401 (this exact
-  failure broke the upstream claude-docs-gaps aggregate cron).
-- **preview.yml** — builds the site for each PR and delegates to the org's
-  reusable `buildhost-preview` workflow (deploys to `branch/pr-<n>` and posts
-  a sticky comment with the URL). Unlike the deploy job, an unreadable corpus
-  only downgrades the preview to a workflow warning — otherwise the required
-  `all-builds` gate would stay red on every PR until the credential exists.
+Consumer repos run the tool from their own CI, where their `GITHUB_TOKEN`
+can read their own corpus — no cross-repo credentials anywhere. Either
+download the prebuilt binary that this repo's CI publishes to
+[buildhost](https://pazer.build):
+
+```sh
+curl -fL --compressed \
+  "https://dl.pazer.build/versioned-docs?branch=master&os=linux&arch=amd64" \
+  -o versioned-docs && chmod +x versioned-docs
+```
+
+(`linux/arm64` is published too; swap the `arch` param) — or build from
+source with [go-toolchain](https://github.com/wow-look-at-my/go-toolchain) as
+a fallback. Then run `fetch-aggregate` plus the generator against the
+consumer's own corpus and deploy the output wherever that repo publishes.
+[claude-docs-gaps](https://github.com/PazerOP/claude-docs-gaps) is the
+reference consumer.
+
+## CI (this repo)
+
+`.github/workflows/ci.yml` runs a single `test` job on every push:
+[go-toolchain](https://github.com/wow-look-at-my/go-toolchain) tests,
+enforces the 80% coverage gate, builds, and — via its autorelease — publishes
+the built binaries to the buildhost project `versioned-docs` (GitHub OIDC, no
+static secret).
 
 ## Development
 
