@@ -3,3 +3,6 @@ versioned-docs/
 example/site/
 example/site-test/
 coverage.out
+
+# Generated site output from local runs (never vendored)
+site/

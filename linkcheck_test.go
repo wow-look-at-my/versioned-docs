@@ -1,12 +1,83 @@
 package main
 
 import (
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
+
+// assertNoDeadLinks walks every HTML file under outputDir and asserts that
+// every non-external href resolves to a file on disk. Hrefs are
+// percent-unescaped first, mirroring what a web server does when mapping a
+// request path to a static file.
+func assertNoDeadLinks(t *testing.T, outputDir string) {
+	t.Helper()
+
+	var htmlFiles []string
+	err := filepath.Walk(outputDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if !info.IsDir() && strings.HasSuffix(path, ".html") {
+			htmlFiles = append(htmlFiles, path)
+		}
+		return nil
+	})
+	require.Nil(t, err)
+	require.NotEmpty(t, htmlFiles)
+
+	hrefRe := regexp.MustCompile(`href="([^"]+)"`)
+
+	for _, htmlFile := range htmlFiles {
+		data, err := os.ReadFile(htmlFile)
+		require.Nil(t, err)
+
+		matches := hrefRe.FindAllStringSubmatch(string(data), -1)
+		for _, match := range matches {
+			href := match[1]
+
+			// Skip external links
+			if strings.HasPrefix(href, "http://") || strings.HasPrefix(href, "https://") {
+				continue
+			}
+
+			// Skip anchor-only links
+			if strings.HasPrefix(href, "#") {
+				continue
+			}
+
+			// Undo URL escaping to get the on-disk name
+			unescaped, err := url.PathUnescape(href)
+			require.NoError(t, err, "invalid escaping in href %q (%s)", href, htmlFile)
+
+			// Mirror static/script.js: relative in-content links to *.md are
+			// rewritten to the generated .html pages at runtime.
+			if strings.HasSuffix(unescaped, ".md") && !strings.HasPrefix(unescaped, "/") {
+				unescaped = strings.TrimSuffix(unescaped, ".md") + ".html"
+			}
+
+			// Resolve the link relative to the HTML file's directory
+			var targetPath string
+			if strings.HasPrefix(unescaped, "/") {
+				// Absolute path from output root
+				targetPath = filepath.Join(outputDir, unescaped)
+			} else {
+				// Relative path from the HTML file's directory
+				targetPath = filepath.Join(filepath.Dir(htmlFile), unescaped)
+			}
+
+			// Check if target exists
+			_, err = os.Stat(targetPath)
+			assert.False(t, os.IsNotExist(err), "dead link %q in %s", href, htmlFile)
+		}
+	}
+}
 
 func TestNoDeadLinks(t *testing.T) {
 	// Set up test directories
@@ -24,19 +95,14 @@ func TestNoDeadLinks(t *testing.T) {
 
 	// Load config and generate
 	cfg, err := LoadConfig(configPath)
-	if err != nil {
-		t.Fatalf("LoadConfig: %v", err)
-	}
+	require.Nil(t, err)
 
 	softwareVersions, err := LoadSoftwareVersions(cfg)
-	if err != nil {
-		t.Fatalf("LoadSoftwareVersions: %v", err)
-	}
+	require.Nil(t, err)
 
 	documentedVersions, err := DiscoverDocumentedVersions(contentDir, softwareVersions)
-	if err != nil {
-		t.Fatalf("DiscoverDocumentedVersions: %v", err)
-	}
+	require.Nil(t, err)
+
 
 	vmap := ResolveVersionMap(softwareVersions, documentedVersions)
 
@@ -51,64 +117,7 @@ func TestNoDeadLinks(t *testing.T) {
 		BaseURL:            "",
 	}
 
-	if err := gen.Generate(); err != nil {
-		t.Fatalf("Generate: %v", err)
-	}
+	require.NoError(t, gen.Generate())
 
-	// Find all HTML files
-	var htmlFiles []string
-	err = filepath.Walk(outputDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		if !info.IsDir() && strings.HasSuffix(path, ".html") {
-			htmlFiles = append(htmlFiles, path)
-		}
-		return nil
-	})
-	if err != nil {
-		t.Fatalf("walking output: %v", err)
-	}
-
-	// Regex to find href attributes
-	hrefRe := regexp.MustCompile(`href="([^"]+)"`)
-
-	// Check each HTML file for dead links
-	for _, htmlFile := range htmlFiles {
-		data, err := os.ReadFile(htmlFile)
-		if err != nil {
-			t.Fatalf("reading %s: %v", htmlFile, err)
-		}
-
-		matches := hrefRe.FindAllStringSubmatch(string(data), -1)
-		for _, match := range matches {
-			href := match[1]
-
-			// Skip external links
-			if strings.HasPrefix(href, "http://") || strings.HasPrefix(href, "https://") {
-				continue
-			}
-
-			// Skip anchor-only links
-			if strings.HasPrefix(href, "#") {
-				continue
-			}
-
-			// Resolve the link relative to the HTML file's directory
-			var targetPath string
-			if strings.HasPrefix(href, "/") {
-				// Absolute path from output root
-				targetPath = filepath.Join(outputDir, href)
-			} else {
-				// Relative path from the HTML file's directory
-				targetPath = filepath.Join(filepath.Dir(htmlFile), href)
-			}
-
-			// Check if target exists
-			if _, err := os.Stat(targetPath); os.IsNotExist(err) {
-				relHTML, _ := filepath.Rel(outputDir, htmlFile)
-				t.Errorf("dead link in %s: %s -> %s", relHTML, href, targetPath)
-			}
-		}
-	}
+	assertNoDeadLinks(t, outputDir)
 }

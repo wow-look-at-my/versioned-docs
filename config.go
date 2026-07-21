@@ -15,9 +15,17 @@ type Config struct {
 	Project        string `yaml:"project"`
 	Repo           string `yaml:"repo"`
 	VersionCommand string `yaml:"version_command"`
+	ContentCommand string `yaml:"content_command"`
+
+	// Terminated maps a doc path (relative to a version's content directory,
+	// e.g. "auto-mode-override.md") to the LAST software version it applies
+	// to. The doc stays visible up to and including that version and is
+	// hidden from all later versions. See terminate.go for the exact
+	// boundary semantics and validation rules.
+	Terminated map[string]string `yaml:"terminated"`
 
 	// ConfigDir is the directory containing the config file.
-	// Used as working directory for version_command.
+	// Used as working directory for version_command and content_command.
 	ConfigDir string `yaml:"-"`
 }
 
@@ -70,6 +78,24 @@ func LoadSoftwareVersions(cfg *Config) ([]string, error) {
 
 	return versions, nil
 }
+
+// RunContentCommand runs the content_command if configured.
+// This allows preparing content (e.g., extracting docs from git branches)
+// before the tool scans the content directory.
+func RunContentCommand(cfg *Config) error {
+	if cfg.ContentCommand == "" {
+		return nil
+	}
+	cmd := exec.Command("sh", "-c", cfg.ContentCommand)
+	cmd.Dir = cfg.ConfigDir
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("running content_command: %w", err)
+	}
+	return nil
+}
+
 
 // DiscoverDocumentedVersions scans the content directory to find which
 // software versions have authored documentation (i.e., have a subdirectory).

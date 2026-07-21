@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/stretchr/testify/assert"
 	"testing"
 )
 
@@ -33,9 +34,8 @@ func TestResolveVersionMap(t *testing.T) {
 	}
 
 	for v, want := range expected {
-		if got[v] != want {
-			t.Errorf("version %s: got docs %q, want %q", v, got[v], want)
-		}
+		assert.Equal(t, want, got[v])
+
 	}
 }
 
@@ -46,9 +46,8 @@ func TestResolveVersionMap_AllDocumented(t *testing.T) {
 	got := ResolveVersionMap(software, documented)
 
 	for _, v := range software {
-		if got[v] != v {
-			t.Errorf("version %s: got %q, want %q", v, got[v], v)
-		}
+		assert.Equal(t, v, got[v])
+
 	}
 }
 
@@ -60,9 +59,8 @@ func TestResolveVersionMap_OnlyLastDocumented(t *testing.T) {
 
 	// 1 and 2 have no prior docs, should fall forward to 3
 	for _, v := range software {
-		if got[v] != "3" {
-			t.Errorf("version %s: got %q, want %q", v, got[v], "3")
-		}
+		assert.Equal(t, "3", got[v])
+
 	}
 }
 
@@ -116,9 +114,8 @@ func TestResolvePageVersion(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := ResolvePageVersion(tt.softwareVersion, "test.md", software, tt.pageVersions)
-			if got != tt.want {
-				t.Errorf("ResolvePageVersion() = %q, want %q", got, tt.want)
-			}
+			assert.Equal(t, tt.want, got)
+
 		})
 	}
 }
@@ -135,17 +132,15 @@ func TestResolvePageVersion_PageLevelInheritance(t *testing.T) {
 	apiVersions := map[string]bool{"v2": true}
 
 	// v3's index should come from v3 (authored)
-	if got := ResolvePageVersion("v3", "index.md", software, indexVersions); got != "v3" {
-		t.Errorf("v3 index: got %q, want v3", got)
-	}
+	got := ResolvePageVersion("v3", "index.md", software, indexVersions)
+	assert.Equal(t, "v3", got)
 
 	// v3's api should come from v2 (inherited)
-	if got := ResolvePageVersion("v3", "api.md", software, apiVersions); got != "v2" {
-		t.Errorf("v3 api: got %q, want v2", got)
-	}
+	got = ResolvePageVersion("v3", "api.md", software, apiVersions)
+	assert.Equal(t, "v2", got)
 
 	// v1's index should come from v2 (falls forward)
-	if got := ResolvePageVersion("v1", "index.md", software, indexVersions); got != "v2" {
-		t.Errorf("v1 index: got %q, want v2", got)
-	}
+	got = ResolvePageVersion("v1", "index.md", software, indexVersions)
+	assert.Equal(t, "v2", got)
+
 }

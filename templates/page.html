@@ -9,12 +9,23 @@
 <body class="page-view">
 <div class="layout">
   <nav>
-    <div class="version-select">
-      <h2>Version</h2>
+    <a class="home-link" href="{{.BaseURL}}/index.html">← All documents</a>
+    <div class="version-select doc-picker">
+      <h2>Document version</h2>
       <select onchange="if(this.value)window.location.href=this.value">
-        {{range .AllVersions -}}
-        <option value="{{$.BaseURL}}/{{.}}/index.html" {{if eq . $.SoftwareVersion}}selected{{end}}>
-          {{.}}{{if ne . (index $.VersionMap .)}} (docs: {{index $.VersionMap .}}){{end}}
+        {{range $i, $v := .CurrentPageChain -}}
+        <option value="{{if eq $i 0}}{{$.DocURL}}{{else}}{{$.BaseURL}}/{{$v}}/{{$.CurrentPage.Filename | trimmd}}.html{{end}}" {{if eq $v $.DocsVersion}}selected{{end}}>
+          {{$v}}{{if eq $i 0}} (newest){{end}}
+        </option>
+        {{end -}}
+      </select>
+    </div>
+    <div class="version-select">
+      <h2>Site version</h2>
+      <select onchange="if(this.value)window.location.href=this.value">
+        {{range .PageVersions -}}
+        <option value="{{$.BaseURL}}/{{.}}/{{$.CurrentPage.Filename | trimmd}}.html" {{if eq . $.SoftwareVersion}}selected{{end}}>
+          {{.}}
         </option>
         {{end -}}
       </select>
@@ -26,8 +37,18 @@
       {{.Title}}
     </a>
     {{end -}}
+    <div class="nav-links">
+      <a href="{{.BaseURL}}/versions.html">Version history</a>
+    </div>
   </nav>
   <main>
+    {{if .IsRemoved -}}
+    <div class="removed-banner">
+      🪦 This document last applies to version <strong>{{.TerminatedAt}}</strong>.
+      It was removed in later versions and does not apply to the current
+      version ({{.CurrentVersion}}).
+    </div>
+    {{end -}}
     {{if .IsInherited -}}
     <div class="inherited-banner">
       📋 These docs were written for version <strong>{{.DocsVersion}}</strong>.
@@ -38,6 +59,7 @@
     <div class="llm-link">
       🤖 <a href="{{.BaseURL}}/{{.SoftwareVersion}}/llms-full.md">LLM-friendly version</a>
       · <a href="{{.BaseURL}}/llms.txt">llms.txt</a>
+      · <a href="{{.DocURL}}">newest revision of this document</a>
     </div>
   </main>
 </div>

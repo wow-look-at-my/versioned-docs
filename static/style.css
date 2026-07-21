@@ -7,6 +7,7 @@
 	--warn: #e2b93b;
 	--ok: #4caf50;
 	--inherit: #e2b93b;
+	--removed: #e54848;
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -30,8 +31,12 @@ a:hover { text-decoration: underline; }
 .page-view nav a.active { font-weight: bold; color: #fff; }
 .page-view .version-select { margin-bottom: 1.5rem; }
 .page-view .version-select select { width: 100%; padding: 0.4rem; background: var(--accent); color: var(--text); border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; }
+.page-view .home-link { display: block; margin-bottom: 1.5rem; font-size: 0.9rem; }
+.page-view .nav-links { margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid rgba(255,255,255,0.05); font-size: 0.9rem; }
 .page-view main { padding: 2rem 3rem; max-width: 900px; }
 .page-view .inherited-banner { background: rgba(226,185,59,0.15); border: 1px solid var(--warn); border-radius: 6px; padding: 0.75rem 1rem; margin-bottom: 1.5rem; font-size: 0.9rem; color: var(--warn); }
+.page-view .removed-banner { background: rgba(229,72,72,0.15); border: 1px solid var(--removed); border-radius: 6px; padding: 0.75rem 1rem; margin-bottom: 1.5rem; font-size: 0.9rem; color: var(--removed); }
+.page-view .doc-meta { color: #888; font-size: 0.85rem; margin-bottom: 1.5rem; padding-bottom: 0.75rem; border-bottom: 1px solid rgba(255,255,255,0.05); }
 .page-view main h1 { font-size: 1.8rem; margin-bottom: 1rem; }
 .page-view main h2 { font-size: 1.4rem; margin-top: 2rem; margin-bottom: 0.5rem; }
 .page-view main h3 { font-size: 1.15rem; margin-top: 1.5rem; margin-bottom: 0.5rem; }
@@ -67,3 +72,7 @@ a:hover { text-decoration: underline; }
 .index-view .legend-authored { background: rgba(76,175,80,0.4); }
 .index-view .legend-inherited { background: rgba(226,185,59,0.3); }
 .index-view .llm-section { margin-top: 2rem; padding-top: 1rem; border-top: 1px solid rgba(255,255,255,0.1); font-size: 0.9rem; color: #888; }
+.index-view .index-links { margin-bottom: 2rem; font-size: 0.9rem; }
+.index-view .doc-list td { text-align: left; }
+.index-view .removed-note { color: #888; font-size: 0.85rem; margin-bottom: 1rem; }
+.index-view .removed-section td.page-name a { color: var(--removed); }

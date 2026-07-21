@@ -4,10 +4,19 @@ on:
   push:
   workflow_dispatch:
 
+permissions:
+  id-token: write
+  contents: write
+  actions: read
+
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: wow-linux
     steps:
       - uses: actions/checkout@v4
 
+      # Tests, coverage gate, build, release in one step: go-toolchain's
+      # autorelease publishes the built binaries to the buildhost project
+      # `versioned-docs` (GitHub OIDC), so consumers can download e.g.
+      #   https://dl.pazer.build/versioned-docs?branch=master&os=linux&arch=amd64
       - uses: wow-look-at-my/go-toolchain@v1
