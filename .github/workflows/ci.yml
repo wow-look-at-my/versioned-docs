@@ -5,12 +5,12 @@ on:
 
 permissions:
   id-token: write
-  contents: read
+  contents: write
   actions: read
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: wow-linux
     steps:
       - uses: actions/checkout@v4
 
