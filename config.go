@@ -96,6 +96,7 @@ func RunContentCommand(cfg *Config) error {
 	return nil
 }
 
+
 // DiscoverDocumentedVersions scans the content directory to find which
 // software versions have authored documentation (i.e., have a subdirectory).
 // It validates that all content subdirectories are in the software versions list.

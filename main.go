@@ -36,6 +36,7 @@ func main() {
 		os.Exit(1)
 	}
 
+
 	softwareVersions, err := LoadSoftwareVersions(cfg)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error loading software versions: %v\n", err)

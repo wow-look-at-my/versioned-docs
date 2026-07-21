@@ -103,6 +103,7 @@ func TestNoDeadLinks(t *testing.T) {
 	documentedVersions, err := DiscoverDocumentedVersions(contentDir, softwareVersions)
 	require.Nil(t, err)
 
+
 	vmap := ResolveVersionMap(softwareVersions, documentedVersions)
 
 	gen := &Generator{
